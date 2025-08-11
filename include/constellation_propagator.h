@@ -8,6 +8,7 @@
 #include <cmath>
 #include <iostream>
 #include "math_constants.h"
+#include "common_types.h"
 
 #ifdef __CUDACC__
 #include <cuda_runtime.h>
@@ -43,12 +44,6 @@ struct SIMDOrbitalElements {
     size_t size() const { return a.size(); }
 };
 
-// 位置速度结构体
-struct StateVector {
-    Eigen::Vector3d r;  // 位置矢量 (m)
-    Eigen::Vector3d v;  // 速度矢量 (m/s)
-};
-
 // 大规模星座外推器
 class ConstellationPropagator {
 public:
@@ -79,6 +74,16 @@ public:
     // 设置积分步长
     void setStepSize(double step) { step_size_ = step; }
     
+    // 启用/禁用自适应步长
+    void setAdaptiveStepSize(bool enable) { adaptive_step_size_ = enable; }
+    
+    // 设置自适应步长参数
+    void setAdaptiveParameters(double tolerance = 1e-6, double min_step = 1.0, double max_step = 300.0) {
+        tolerance_ = tolerance;
+        min_step_size_ = min_step;
+        max_step_size_ = max_step;
+    }
+    
     // 获取卫星数量
     size_t getSatelliteCount() const { return elements_.size(); }
     
@@ -95,6 +100,10 @@ private:
     double current_time_;               // 当前仿真时间
     double step_size_;                  // 积分步长
     ComputeMode compute_mode_;          // 计算模式
+    bool adaptive_step_size_ = false;   // 是否启用自适应步长
+    double tolerance_ = 1e-6;           // 误差容忍度
+    double min_step_size_ = 1.0;        // 最小步长
+    double max_step_size_ = 300.0;      // 最大步长
     
     // CPU标量计算
     void propagateScalar(double dt);
@@ -114,6 +123,12 @@ private:
     
     // 角度归一化 (SIMD优化)
     void normalizeAnglesSIMD(std::vector<double, Eigen::aligned_allocator<double>>& angles);
+    
+    // 标量误差估计：用单步dt和两步dt/2比较
+    double estimateLocalErrorScalar(const CompactOrbitalElements& elem, double dt);
+    
+    // SIMD版本的误差估计（针对小批量时退化为标量）
+    double estimateLocalErrorSIMD(size_t idx, double dt);
     
     // 单个卫星状态计算
     StateVector elementsToState(const CompactOrbitalElements& elements) const;

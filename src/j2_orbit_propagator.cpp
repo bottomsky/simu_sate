@@ -30,11 +30,37 @@ OrbitalElements J2OrbitPropagator::propagate(double t) {
     
     // 分步骤积分
     double remaining_time = dt_total;
-    while (remaining_time > EPSILON) {
+    if (!adaptive_step_size_) {
+        while (remaining_time > EPSILON) {
+            double dt = std::min(remaining_time, step_size_);
+            current_elements_ = rk4Integrate(current_elements_, dt);
+            current_elements_.t += dt;
+            remaining_time -= dt;
+        }
+    } else {
+        // 自适应步长：基于局部误差估计（单步RK4 vs 两个半步RK4）
         double dt = std::min(remaining_time, step_size_);
-        current_elements_ = rk4Integrate(current_elements_, dt);
-        current_elements_.t += dt;
-        remaining_time -= dt;
+        dt = std::max(min_step_size_, std::min(dt, max_step_size_));
+        while (remaining_time > EPSILON) {
+            if (dt > remaining_time) dt = remaining_time;
+            // 估计误差
+            double err = estimateLocalError(current_elements_, dt);
+            if (err <= tolerance_ || dt <= min_step_size_ + 1e-12) {
+                // 接受步长
+                current_elements_ = rk4Integrate(current_elements_, dt);
+                current_elements_.t += dt;
+                remaining_time -= dt;
+                // 成功后放宽步长
+                double safety = 0.9;
+                double growth = 1.5;
+                dt = std::min(max_step_size_, std::min(remaining_time, std::max(min_step_size_, dt * safety * std::pow(std::max(err, 1e-16), -0.2)))) ;
+                dt = std::min(dt, step_size_ * growth);
+            } else {
+                // 减小步长重试
+                double safety = 0.9;
+                dt = std::max(min_step_size_, dt * safety * std::pow(std::max(err, 1e-16), -0.25));
+            }
+        }
     }
     
     // 更新历元时间
@@ -138,6 +164,38 @@ OrbitalElements J2OrbitPropagator::rk4Integrate(const OrbitalElements& elements,
     result.M = normalizeAngle(result.M);
     
     return result;
+}
+
+// 估计局部截断误差：使用单步dt与两步dt/2的结果差异
+// 返回一个无量纲误差度量（按角度变化和相对半长轴变化归一化）
+double J2OrbitPropagator::estimateLocalError(const OrbitalElements& elements, double dt) {
+    // 单步
+    OrbitalElements y1 = rk4Integrate(elements, dt);
+    // 两个半步
+    OrbitalElements half = rk4Integrate(elements, dt * 0.5);
+    OrbitalElements y2 = rk4Integrate(half, dt * 0.5);
+    
+    // 组合误差度量：角度误差用差值归一化到[0,pi]，a用相对误差
+    auto angle_diff = [&](double a1, double a2){
+        double d = std::fmod(std::abs(a1 - a2), 2.0 * M_PI);
+        if (d > M_PI) d = 2.0 * M_PI - d;
+        return d;
+    };
+    double ea = std::abs(y1.a - y2.a) / std::max(1.0, std::abs(elements.a));
+    double ee = std::abs(y1.e - y2.e) / std::max(1.0, std::abs(elements.e) + 1e-12);
+    double ei = angle_diff(y1.i, y2.i);
+    double eO = angle_diff(y1.O, y2.O);
+    double ew = angle_diff(y1.w, y2.w);
+    double eM = angle_diff(y1.M, y2.M);
+    
+    // 将角度误差缩放到近似相对尺度（除以pi）
+    double ang_norm = (ei + eO + ew + eM) / (4.0 * M_PI);
+    
+    // 考虑偏心率影响：高偏心率时放宽阈值
+    double e_scale = 1.0 + 5.0 * elements.e;
+    
+    double err = e_scale * (0.5 * ea + 0.2 * ee + 0.3 * ang_norm);
+    return err;
 }
 
 double J2OrbitPropagator::computeEccentricAnomaly(double M, double e) {

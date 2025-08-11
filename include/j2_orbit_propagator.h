@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iostream>
 #include "math_constants.h"
+#include "common_types.h"
 
 // 轨道要素结构体
 struct OrbitalElements {
@@ -15,12 +16,6 @@ struct OrbitalElements {
     double w;   // 近地点幅角 (rad)
     double M;   // 平近点角 (rad)
     double t;   // 历元时间 (s)
-};
-
-// 位置速度结构体
-struct StateVector {
-    Eigen::Vector3d r;  // 位置矢量 (m)
-    Eigen::Vector3d v;  // 速度矢量 (m/s)
 };
 
 class J2OrbitPropagator {
@@ -45,10 +40,24 @@ public:
     
     // 获取当前积分步长
     double getStepSize() const { return step_size_; }
+    
+    // 启用/禁用自适应步长
+    void setAdaptiveStepSize(bool enable) { adaptive_step_size_ = enable; }
+    
+    // 设置自适应步长参数
+    void setAdaptiveParameters(double tolerance = 1e-6, double min_step = 1.0, double max_step = 300.0) {
+        tolerance_ = tolerance;
+        min_step_size_ = min_step;
+        max_step_size_ = max_step;
+    }
 
 private:
     OrbitalElements current_elements_;  // 当前轨道要素
     double step_size_;                  // 积分步长 (s)
+    bool adaptive_step_size_ = false;   // 是否启用自适应步长
+    double tolerance_ = 1e-6;           // 误差容忍度（用于步长控制）
+    double min_step_size_ = 1.0;        // 最小步长
+    double max_step_size_ = 300.0;      // 最大步长
     
     // 计算J2摄动引起的轨道要素变化率
     Eigen::VectorXd computeDerivatives(const OrbitalElements& elements);
@@ -56,13 +65,16 @@ private:
     // 四阶龙格-库塔积分
     OrbitalElements rk4Integrate(const OrbitalElements& elements, double dt);
     
+    // 自适应步长误差估计（嵌套RK）
+    double estimateLocalError(const OrbitalElements& elements, double dt);
+    
     // 计算偏近点角
     double computeEccentricAnomaly(double M, double e);
     
     // 计算真近点角
     double computeTrueAnomaly(double E, double e);
     
-    // 角度归一化到[0, 2π)
+    // 角度归一化
     double normalizeAngle(double angle);
 };
 
