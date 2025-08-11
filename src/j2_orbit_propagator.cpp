@@ -7,6 +7,8 @@ J2OrbitPropagator::J2OrbitPropagator(const OrbitalElements& initial_elements)
     current_elements_.O = normalizeAngle(current_elements_.O);
     current_elements_.w = normalizeAngle(current_elements_.w);
     current_elements_.M = normalizeAngle(current_elements_.M);
+    // 在构造函数中预计算
+    const double J2_FACTOR = 3.0 * J2 * MU * RE * RE / 2.0;
 }
 
 OrbitalElements J2OrbitPropagator::propagate(double t) {
@@ -77,11 +79,11 @@ Eigen::VectorXd J2OrbitPropagator::computeDerivatives(const OrbitalElements& ele
     // 倾角变化率 - J2摄动不影响倾角的长期变化
     derivatives[2] = 0.0;
     
+    double common_factor = factor / (n * a * a);
     // 升交点赤经变化率
-    derivatives[3] = -factor * std::cos(i) / (n * a * a);
-    
+    derivatives[3] = -common_factor * std::cos(i);
     // 近地点幅角变化率
-    derivatives[4] = factor * (2.0 - 2.5 * std::pow(std::sin(i), 2)) / (n * a * a);
+    derivatives[4] = common_factor * (2.0 - 2.5 * std::pow(std::sin(i), 2));
     
     // 平近点角变化率
     derivatives[5] = n + factor * ((3.0 * std::pow(std::cos(i), 2) - 1.0) / 2.0) * (1.0 - e * e) / (n * a * a);
