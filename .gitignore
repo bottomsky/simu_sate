@@ -1,0 +1,20 @@
+# C++ build artifacts
+*.o
+*.obj
+*.exe
+*.out
+
+# Directories
+build/
+bin/
+obj/
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Misc
+.DS_Store
+Thumbs.db
