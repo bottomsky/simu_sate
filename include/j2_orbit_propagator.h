@@ -4,12 +4,7 @@
 #include <Eigen/Dense>
 #include <cmath>
 #include <iostream>
-
-// 物理常数定义
-const double MU = 3.986004418e14;       // 地球引力常数 (m^3/s^2)
-const double RE = 6378137.0;           // 地球平均半径 (m)
-const double J2 = 1.08263e-3;          // 地球二阶带谐系数
-const double EPSILON = 1e-12;          // 数值计算精度
+#include "math_constants.h"
 
 // 轨道要素结构体
 struct OrbitalElements {
