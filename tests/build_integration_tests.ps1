@@ -2,7 +2,8 @@
   [string]$Config = "Debug",
   [string]$BuildDir = "",
   [string]$Generator = "",
-  [switch]$Run
+  [switch]$Run,
+  [string]$Target = "integration_tests"
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,13 +30,13 @@ try {
   Write-Host "[STEP] Configure CMake for integration tests..." -ForegroundColor Cyan
   & cmake @cmakeArgs
 
-  Write-Host "[STEP] Build target: integration_tests ($Config)..." -ForegroundColor Cyan
-  $buildArgs = @("--build", $BuildDir, "--config", $Config, "--target", "integration_tests")
+  Write-Host "[STEP] Build target: $Target ($Config)..." -ForegroundColor Cyan
+  $buildArgs = @("--build", $BuildDir, "--config", $Config, "--target", $Target)
   & cmake @buildArgs
 
   if ($Run.IsPresent) {
-    Write-Host "[STEP] Run integration tests via ctest..." -ForegroundColor Cyan
-    & ctest "--test-dir" $BuildDir "-C" $Config "-R" "integration_tests" "--output-on-failure"
+    Write-Host "[STEP] Run tests via ctest (pattern: $Target)..." -ForegroundColor Cyan
+    & ctest "--test-dir" $BuildDir "-C" $Config "-R" $Target "--output-on-failure"
   }
 
   Write-Host "[DONE] Integration tests build completed." -ForegroundColor Green
