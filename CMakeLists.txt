@@ -1,0 +1,136 @@
+cmake_minimum_required(VERSION 3.12)
+project(J2OrbitPropagator VERSION 1.0.0 LANGUAGES CXX)
+
+# 设置C++标准
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 设置编译选项
+if(MSVC)
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra -pedantic)
+endif()
+
+# 使用项目中的Eigen库
+set(EIGEN3_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/eigen)
+add_library(Eigen3::Eigen INTERFACE IMPORTED)
+set_target_properties(Eigen3::Eigen PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${EIGEN3_INCLUDE_DIR}"
+)
+
+# 包含目录
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/eigen
+)
+
+# 源文件
+set(SOURCES
+    src/j2_orbit_propagator.cpp
+    src/j2_orbit_propagator_c.cpp
+)
+
+# 头文件
+set(HEADERS
+    include/j2_orbit_propagator.h
+    include/j2_orbit_propagator_c.h
+    include/common_types.h
+    include/math_constants.h
+)
+
+# 创建静态库
+add_library(j2_orbit_propagator_static STATIC ${SOURCES} ${HEADERS})
+target_link_libraries(j2_orbit_propagator_static Eigen3::Eigen)
+target_include_directories(j2_orbit_propagator_static PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+# 创建动态库
+add_library(j2_orbit_propagator_shared SHARED ${SOURCES} ${HEADERS})
+target_link_libraries(j2_orbit_propagator_shared Eigen3::Eigen)
+target_include_directories(j2_orbit_propagator_shared PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+# 设置动态库的输出名称
+set_target_properties(j2_orbit_propagator_shared PROPERTIES
+    OUTPUT_NAME j2_orbit_propagator
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 1
+)
+
+# Windows特定设置
+if(WIN32)
+    # 导出所有符号
+    set_target_properties(j2_orbit_propagator_shared PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
+    )
+endif()
+
+# 可选：构建示例程序
+option(BUILD_EXAMPLES "Build example programs" ON)
+if(BUILD_EXAMPLES)
+    # 检查是否存在main.cpp
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
+        add_executable(j2_example src/main.cpp)
+        target_link_libraries(j2_example j2_orbit_propagator_static)
+    endif()
+endif()
+
+# 可选：构建测试
+option(BUILD_TESTS "Build test programs" ON)
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+# 安装配置
+install(TARGETS j2_orbit_propagator_static j2_orbit_propagator_shared
+    EXPORT J2OrbitPropagatorTargets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+    INCLUDES DESTINATION include
+)
+
+install(FILES ${HEADERS}
+    DESTINATION include
+)
+
+# 导出配置
+install(EXPORT J2OrbitPropagatorTargets
+    FILE J2OrbitPropagatorTargets.cmake
+    NAMESPACE J2OrbitPropagator::
+    DESTINATION lib/cmake/J2OrbitPropagator
+)
+
+# 创建配置文件
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    "J2OrbitPropagatorConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/J2OrbitPropagatorConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/J2OrbitPropagatorConfig.cmake"
+    INSTALL_DESTINATION lib/cmake/J2OrbitPropagator
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/J2OrbitPropagatorConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/J2OrbitPropagatorConfigVersion.cmake"
+    DESTINATION lib/cmake/J2OrbitPropagator
+)
+
+# 打印构建信息
+message(STATUS "J2 Orbit Propagator Configuration:")
+message(STATUS "  Version: ${PROJECT_VERSION}")
+message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  C++ standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "  Build examples: ${BUILD_EXAMPLES}")
+message(STATUS "  Build tests: ${BUILD_TESTS}")

@@ -77,7 +77,7 @@ TEST(SingleSatellitePropagation, PropagateAndRecord) {
     };
     
     int simulation_count = 1000; // 仿真次数：1000次
-    double time_interval = 3600.0; // 每次仿真的时间间隔：1小时
+    double time_interval = 60.0; // 每次仿真的时间间隔：1小时
     
     // 调试输出
     std::cout << "Debug: simulation_count = " << simulation_count << std::endl;

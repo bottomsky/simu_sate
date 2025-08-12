@@ -1,0 +1,145 @@
+﻿# J2轨道传播器动态库构建脚本
+# 该脚本用于在Windows平台上构建J2轨道传播器的动态库
+
+param(
+    [string]$BuildType = "Release",
+    [string]$Generator = "Visual Studio 17 2022",
+    [switch]$Clean,
+    [switch]$Install,
+    [string]$InstallPrefix = "$PWD\install"
+)
+
+# 设置错误处理
+$ErrorActionPreference = "Stop"
+
+# 获取脚本所在目录
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $ScriptDir
+
+Write-Host "J2轨道传播器动态库构建脚本" -ForegroundColor Green
+Write-Host "=" * 50 -ForegroundColor Green
+
+# 检查CMake是否可用
+try {
+    $cmakeVersion = cmake --version
+    Write-Host "发现CMake: $($cmakeVersion[0])" -ForegroundColor Yellow
+} catch {
+    Write-Error "未找到CMake，请确保CMake已安装并在PATH中"
+    exit 1
+}
+
+# 创建构建目录
+$BuildDir = "build"
+if ($Clean -and (Test-Path $BuildDir)) {
+    Write-Host "清理构建目录: $BuildDir" -ForegroundColor Yellow
+    Remove-Item -Recurse -Force $BuildDir
+}
+
+if (-not (Test-Path $BuildDir)) {
+    Write-Host "创建构建目录: $BuildDir" -ForegroundColor Yellow
+    New-Item -ItemType Directory -Path $BuildDir | Out-Null
+}
+
+Set-Location $BuildDir
+
+# 配置CMake
+Write-Host "配置CMake项目..." -ForegroundColor Yellow
+Write-Host "构建类型: $BuildType" -ForegroundColor Cyan
+Write-Host "生成器: $Generator" -ForegroundColor Cyan
+
+$cmakeArgs = @(
+    "..",
+    "-G", $Generator,
+    "-DCMAKE_BUILD_TYPE=$BuildType",
+    "-DBUILD_EXAMPLES=ON",
+    "-DBUILD_TESTS=ON"
+)
+
+if ($Install) {
+    $cmakeArgs += "-DCMAKE_INSTALL_PREFIX=$InstallPrefix"
+}
+
+try {
+    & cmake @cmakeArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "CMake配置失败"
+    }
+} catch {
+    Write-Error "CMake配置失败: $_"
+    exit 1
+}
+
+# 构建项目
+Write-Host "构建项目..." -ForegroundColor Yellow
+try {
+    & cmake --build . --config $BuildType --parallel
+    if ($LASTEXITCODE -ne 0) {
+        throw "构建失败"
+    }
+} catch {
+    Write-Error "构建失败: $_"
+    exit 1
+}
+
+# 安装（如果指定）
+if ($Install) {
+    Write-Host "安装到: $InstallPrefix" -ForegroundColor Yellow
+    try {
+        & cmake --install . --config $BuildType
+        if ($LASTEXITCODE -ne 0) {
+            throw "安装失败"
+        }
+    } catch {
+        Write-Error "安装失败: $_"
+        exit 1
+    }
+}
+
+# 显示构建结果
+Write-Host "构建完成！" -ForegroundColor Green
+Write-Host "=" * 50 -ForegroundColor Green
+
+# 查找生成的文件
+$dllFiles = Get-ChildItem -Recurse -Filter "*.dll" | Where-Object { $_.Name -like "*j2_orbit_propagator*" }
+$libFiles = Get-ChildItem -Recurse -Filter "*.lib" | Where-Object { $_.Name -like "*j2_orbit_propagator*" }
+$exeFiles = Get-ChildItem -Recurse -Filter "*.exe" | Where-Object { $_.Name -like "*j2*" -or $_.Name -like "*test*" }
+
+if ($dllFiles) {
+    Write-Host "生成的动态库文件:" -ForegroundColor Cyan
+    foreach ($file in $dllFiles) {
+        Write-Host "  $($file.FullName)" -ForegroundColor White
+    }
+}
+
+if ($libFiles) {
+    Write-Host "生成的静态库文件:" -ForegroundColor Cyan
+    foreach ($file in $libFiles) {
+        Write-Host "  $($file.FullName)" -ForegroundColor White
+    }
+}
+
+if ($exeFiles) {
+    Write-Host "生成的可执行文件:" -ForegroundColor Cyan
+    foreach ($file in $exeFiles) {
+        Write-Host "  $($file.FullName)" -ForegroundColor White
+    }
+}
+
+# 复制动态库到示例目录
+$ExampleDir = "..\example"
+if ($dllFiles -and (Test-Path $ExampleDir)) {
+    Write-Host "复制动态库到示例目录..." -ForegroundColor Yellow
+    foreach ($dll in $dllFiles) {
+        $destPath = Join-Path $ExampleDir $dll.Name
+        Copy-Item $dll.FullName $destPath -Force
+        Write-Host "  复制: $($dll.Name) -> $destPath" -ForegroundColor White
+    }
+}
+
+Write-Host "\n使用说明:" -ForegroundColor Green
+Write-Host "1. Python绑定示例: python example\python_binding_example.py" -ForegroundColor White
+Write-Host "2. C#绑定示例: 编译并运行 example\CSharpBindingExample.cs" -ForegroundColor White
+Write-Host "3. 动态库文件可用于其他语言的FFI调用" -ForegroundColor White
+
+Set-Location ..
+Write-Host "构建脚本执行完成！" -ForegroundColor Green
