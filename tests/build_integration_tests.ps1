@@ -1,17 +1,38 @@
 ﻿param(
+  [Alias('c')]
   [string]$Config = "Release",
+
+  [Alias('b','bd')]
   [string]$BuildDir = "",
+
+  [Alias('g')]
   [string]$Generator = "",
+
+  [Alias('r')]
   [switch]$Run,
-  [Alias('jt')]
+
+  [Alias('jt','j')]
   [switch]$JustTest,
-  [string]$Target = "integration_tests"
+
+  [Alias('t')]
+  [string]$Target = "integration_tests",
+
+  # 便捷开关：快速指定 Target
+  [Alias('u')]
+  [switch]$Unit,
+
+  [Alias('it')]
+  [switch]$Integration
 )
 
 $ErrorActionPreference = "Stop"
 
 # 脚本所在目录（tests）
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# 如果指定了便捷开关，覆盖 Target
+if ($Unit.IsPresent) { $Target = "unit_tests" }
+elseif ($Integration.IsPresent) { $Target = "integration_tests" }
 
 # 根据 Target 推断默认构建目录
 if (-not $BuildDir -or $BuildDir -eq "") {
