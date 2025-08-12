@@ -84,9 +84,9 @@ __constant__ double d_J2 = 1.08263e-3;     ///< 地球J2摄动系数
  * @return 归一化后的角度（弧度）。
  */
 __device__ double normalize_angle_cuda(double angle) {
-    angle = fmod(angle, 2.0 * M_PI);
+    angle = fmod(angle, 2.0 * CUDART_PI );
     if (angle < 0) {
-        angle += 2.0 * M_PI;
+        angle += 2.0 *CUDART_PI;
     }
     return angle;
 }
