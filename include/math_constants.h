@@ -1,6 +1,9 @@
 #ifndef MATH_CONSTANTS_H
 #define MATH_CONSTANTS_H
 
+#include <cmath>
+#include <Eigen/Dense>
+
 // =============================================================================
 // 数学常数定义
 // =============================================================================
@@ -92,6 +95,11 @@ const double SEC_PER_MIN = 60.0;                 // 每分钟秒数
 const double DAY_PER_YEAR = 365.25;              // 每年天数(儒略年)
 const double SEC_PER_YEAR = DAY_PER_YEAR * SEC_PER_DAY;  // 每年秒数
 
+// J2000.0 历元常数（用于GMST计算）
+const double J2000_JD = 2451545.0;               // J2000.0 儒略日
+const double GMST_0_J2000 = 18.697374558;        // J2000.0 0时UT1对应的GMST (小时)
+const double GMST_RATE = 1.00273790935;          // 平恒星时相对于世界时的速率
+
 // 单位转换
 const double KM_TO_M = 1000.0;                   // 千米转米
 const double M_TO_KM = 1.0 / 1000.0;             // 米转千米
@@ -135,6 +143,112 @@ inline void radToDms(double radians, int& degrees, int& minutes, double& seconds
     double min = (deg - degrees) * 60.0;
     minutes = static_cast<int>(min);
     seconds = (min - minutes) * 60.0;
+}
+
+// =============================================================================
+// ECI/ECEF 坐标转换函数
+// =============================================================================
+
+// 计算格林威治平恒星时（GMST）
+// 输入：世界时UT1的儒略日JD
+// 输出：GMST角度（弧度）
+inline double computeGMST(double jd) {
+    // 自J2000.0以来的世纪数
+    double T = (jd - J2000_JD) / 36525.0;
+    
+    // GMST计算（IAU-76/FK5标准）
+    double gmst_deg = 280.46061837 + 360.98564736629 * (jd - J2000_JD) 
+                    + 0.000387933 * T * T - T * T * T / 38710000.0;
+                    
+    // 归一化到[0, 360)度范围
+    gmst_deg = std::fmod(gmst_deg, 360.0);
+    if (gmst_deg < 0) gmst_deg += 360.0;
+    
+    return gmst_deg * DEG_TO_RAD;  // 转换为弧度
+}
+
+// 从世界协调时UTC的秒数计算简化的儒略日
+// 输入：自某个历元（如Unix时间戳）以来的秒数
+// 输出：儒略日
+inline double utcSecondsToJulianDay(double utc_seconds) {
+    // 这里假设utc_seconds是自J2000.0以来的秒数
+    // 在实际应用中可能需要更复杂的UTC到UT1转换
+    return J2000_JD + utc_seconds / SEC_PER_DAY;
+}
+
+// ECI转ECEF旋转矩阵
+// 输入：格林威治平恒星时角度（弧度）
+// 输出：3x3旋转矩阵
+inline Eigen::Matrix3d eciToEcefRotationMatrix(double gmst) {
+    double cos_gmst = std::cos(gmst);
+    double sin_gmst = std::sin(gmst);
+    
+    Eigen::Matrix3d R;
+    R << cos_gmst,  sin_gmst, 0,
+        -sin_gmst,  cos_gmst, 0,
+               0,        0, 1;
+    
+    return R;
+}
+
+// ECEF转ECI旋转矩阵（ECI转ECEF的转置）
+// 输入：格林威治平恒星时角度（弧度）
+// 输出：3x3旋转矩阵
+inline Eigen::Matrix3d ecefToEciRotationMatrix(double gmst) {
+    return eciToEcefRotationMatrix(gmst).transpose();
+}
+
+// ECI位置矢量转ECEF位置矢量
+// 输入：ECI位置矢量（m），时间（自J2000.0以来的秒数）
+// 输出：ECEF位置矢量（m）
+inline Eigen::Vector3d eciToEcefPosition(const Eigen::Vector3d& r_eci, double time_j2000_seconds) {
+    double jd = utcSecondsToJulianDay(time_j2000_seconds);
+    double gmst = computeGMST(jd);
+    Eigen::Matrix3d R = eciToEcefRotationMatrix(gmst);
+    return R * r_eci;
+}
+
+// ECEF位置矢量转ECI位置矢量
+// 输入：ECEF位置矢量（m），时间（自J2000.0以来的秒数）
+// 输出：ECI位置矢量（m）
+inline Eigen::Vector3d ecefToEciPosition(const Eigen::Vector3d& r_ecef, double time_j2000_seconds) {
+    double jd = utcSecondsToJulianDay(time_j2000_seconds);
+    double gmst = computeGMST(jd);
+    Eigen::Matrix3d R = ecefToEciRotationMatrix(gmst);
+    return R * r_ecef;
+}
+
+// ECI速度矢量转ECEF速度矢量
+// 输入：ECI位置矢量（m），ECI速度矢量（m/s），时间（自J2000.0以来的秒数）
+// 输出：ECEF速度矢量（m/s）
+inline Eigen::Vector3d eciToEcefVelocity(const Eigen::Vector3d& r_eci, const Eigen::Vector3d& v_eci, 
+                                         double time_j2000_seconds) {
+    double jd = utcSecondsToJulianDay(time_j2000_seconds);
+    double gmst = computeGMST(jd);
+    Eigen::Matrix3d R = eciToEcefRotationMatrix(gmst);
+    
+    // 地球自转矢量（沿Z轴）
+    Eigen::Vector3d omega_earth(0, 0, OMEGA_EARTH);
+    
+    // 速度转换：v_ecef = R * v_eci - omega_earth × r_ecef
+    Eigen::Vector3d r_ecef = R * r_eci;
+    return R * v_eci - omega_earth.cross(r_ecef);
+}
+
+// ECEF速度矢量转ECI速度矢量
+// 输入：ECEF位置矢量（m），ECEF速度矢量（m/s），时间（自J2000.0以来的秒数）
+// 输出：ECI速度矢量（m/s）
+inline Eigen::Vector3d ecefToEciVelocity(const Eigen::Vector3d& r_ecef, const Eigen::Vector3d& v_ecef,
+                                         double time_j2000_seconds) {
+    double jd = utcSecondsToJulianDay(time_j2000_seconds);
+    double gmst = computeGMST(jd);
+    Eigen::Matrix3d R = ecefToEciRotationMatrix(gmst);
+    
+    // 地球自转矢量（沿Z轴）
+    Eigen::Vector3d omega_earth(0, 0, OMEGA_EARTH);
+    
+    // 速度转换：v_eci = R * (v_ecef + omega_earth × r_ecef)
+    return R * (v_ecef + omega_earth.cross(r_ecef));
 }
 
 #endif // MATH_CONSTANTS_H
