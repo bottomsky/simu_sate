@@ -2,6 +2,12 @@
 #include "j2_orbit_propagator.h"
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <iomanip>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 
 using json = nlohmann::json;
 
@@ -27,6 +33,17 @@ void write_orbit_data_to_json(const std::string& filename, const OrbitalElements
         {"w", propagated_elements.w},
         {"M", propagated_elements.M}
     };
+
+    // 确保输出目录存在
+    size_t last_slash = filename.find_last_of("\\");
+    if (last_slash != std::string::npos) {
+        std::string dir = filename.substr(0, last_slash);
+#ifdef _WIN32
+        _mkdir(dir.c_str());
+#else
+        mkdir(dir.c_str(), 0755);
+#endif
+    }
 
     std::ofstream o(filename);
     o << std::setw(4) << j << std::endl;
@@ -60,7 +77,9 @@ TEST(SingleSatellitePropagation, PropagateAndRecord) {
 
         OrbitalElements propagated_elements = propagator.propagate(initial_elements.t + propagation_duration);
 
-        std::string filename = "single_sat_propagation_" + step_name + ".json";
+        // 为每个步长生成 JSON 文件，保存到 tests/data 目录
+        std::string data_dir = "d:\\code\\j2-perturbation-orbit-propagator\\tests\\data";
+        std::string filename = data_dir + "\\single_sat_propagation_" + step_name + ".json";
         write_orbit_data_to_json(filename, initial_elements, propagated_elements, step_size);
 
         // Basic assertion to check if propagation happened
