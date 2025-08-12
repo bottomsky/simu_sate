@@ -154,7 +154,8 @@ Eigen::VectorXd J2OrbitPropagator::computeDerivatives(const OrbitalElements& ele
     
     // 平近点角(M)的变化率 (dM/dt)
     // 包含自然运动(n)和J2摄动引起的附加项。
-    derivatives[5] = n + factor * std::sqrt(1.0 - e * e) * (1.5 * cos_i * cos_i - 0.5);
+    // 注意：J2摄动项应为负值，因为J2效应会减缓卫星的平均运动
+    derivatives[5] = n - factor * std::sqrt(1.0 - e * e) * (1.5 * sin_i_sq - 0.5);
     
     return derivatives;
 }
@@ -173,23 +174,23 @@ OrbitalElements J2OrbitPropagator::rk4Integrate(const OrbitalElements& elements,
     
     // k2: 在步长中点使用k1预测的值计算导数
     OrbitalElements temp = elements;
-    temp.O += k1[3] * dt / 2.0;
-    temp.w += k1[4] * dt / 2.0;
-    temp.M += k1[5] * dt / 2.0;
+    temp.O = normalizeAngle(temp.O + k1[3] * dt / 2.0);
+    temp.w = normalizeAngle(temp.w + k1[4] * dt / 2.0);
+    temp.M = normalizeAngle(temp.M + k1[5] * dt / 2.0);
     Eigen::VectorXd k2 = computeDerivatives(temp);
     
     // k3: 在步长中点使用k2预测的值计算导数
     temp = elements;
-    temp.O += k2[3] * dt / 2.0;
-    temp.w += k2[4] * dt / 2.0;
-    temp.M += k2[5] * dt / 2.0;
+    temp.O = normalizeAngle(temp.O + k2[3] * dt / 2.0);
+    temp.w = normalizeAngle(temp.w + k2[4] * dt / 2.0);
+    temp.M = normalizeAngle(temp.M + k2[5] * dt / 2.0);
     Eigen::VectorXd k3 = computeDerivatives(temp);
     
     // k4: 在步长终点使用k3预测的值计算导数
     temp = elements;
-    temp.O += k3[3] * dt;
-    temp.w += k3[4] * dt;
-    temp.M += k3[5] * dt;
+    temp.O = normalizeAngle(temp.O + k3[3] * dt);
+    temp.w = normalizeAngle(temp.w + k3[4] * dt);
+    temp.M = normalizeAngle(temp.M + k3[5] * dt);
     Eigen::VectorXd k4 = computeDerivatives(temp);
     
     // 将k1, k2, k3, k4加权平均，更新轨道根数。
@@ -418,7 +419,18 @@ OrbitalElements J2OrbitPropagator::stateToElements(const StateVector& state, dou
     }
     
     // 9. 从真近点角 nu 计算偏近点角 E。
-    double E = 2.0 * std::atan(std::tan(nu / 2.0) * std::sqrt((1.0 - elements.e) / (1.0 + elements.e)));
+    // 使用更稳定的公式并处理象限问题
+    double E;
+    if (std::abs(elements.e) < EPSILON) {
+        // 圆轨道情况
+        E = nu;
+    } else {
+        // 椭圆轨道情况
+        double sin_E = std::sqrt(1.0 - elements.e * elements.e) * std::sin(nu) / (1.0 + elements.e * std::cos(nu));
+        double cos_E = (elements.e + std::cos(nu)) / (1.0 + elements.e * std::cos(nu));
+        E = std::atan2(sin_E, cos_E);
+        E = normalizeAngle(E);
+    }
     
     // 10. 从偏近点角 E 计算平近点角 M。
     elements.M = E - elements.e * std::sin(E);
