@@ -93,7 +93,8 @@ OrbitalElements J2OrbitPropagator::propagate(double t) {
                 if (err > 1e-16) { // 避免除以零
                     double safety = 0.9;
                     double growth_factor = 1.5;
-                    double new_dt = dt * safety * std::pow(err / tolerance_, -0.2);
+                    double error_ratio = err / tolerance_;
+                    double new_dt = dt * safety * std::pow(error_ratio, -0.2);
                     dt = std::min(new_dt, dt * growth_factor); // 限制单次增长幅度
                 } else {
                     dt *= 1.5; // 如果误差极小，直接按比例增加
@@ -104,7 +105,8 @@ OrbitalElements J2OrbitPropagator::propagate(double t) {
                 // safety: 安全因子，确保新步长足够小。
                 // pow(err, -0.25): 误差越大，步长减小得越多。指数-0.25是RK4方法的保守选择。
                 double safety = 0.9;
-                dt = dt * safety * std::pow(err / tolerance_, -0.25);
+                double error_ratio = err / tolerance_;
+                dt = dt * safety * std::pow(error_ratio, -0.25);
             }
             // 确保新计算的步长在设定的最大和最小步长范围内。
             dt = std::max(min_step_size_, std::min(dt, max_step_size_));
