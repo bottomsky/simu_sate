@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "j2_orbit_propagator.h"
 #include "constellation_propagator.h"
-#include "math_constants.h"
+#include "math_defs.h"
 #include <fstream>
 #include <iomanip>
 #include <vector>

@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "j2_orbit_propagator.h"
 #include "constellation_propagator.h"
-#include "math_constants.h"
+#include "math_defs.h"
 
 // 集成测试：验证 J2 轨道传播器与星座传播器之间的一致性
 class IntegrationTest : public ::testing::Test {

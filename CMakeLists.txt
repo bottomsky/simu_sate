@@ -5,11 +5,11 @@ project(J2OrbitPropagator VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 设置编译选项
+# 设置编译选项（仅针对C++源文件，避免影响CUDA编译）
 if(MSVC)
-    add_compile_options(/W4)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/W4>)
 else()
-    add_compile_options(-Wall -Wextra -pedantic)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wall> $<$<COMPILE_LANGUAGE:CXX>:-Wextra> $<$<COMPILE_LANGUAGE:CXX>:-pedantic>)
 endif()
 
 # 使用项目中的Eigen库
