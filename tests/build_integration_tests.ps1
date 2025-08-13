@@ -78,29 +78,45 @@ if ($Generator -and $Generator.Trim().Length -gt 0) {
 
 try {
   if (-not $JustTest.IsPresent) {
-    $what = if ($Target -match '^unit') { 'unit tests' } elseif ($Target -match '^integration') { 'integration tests' } else { "tests for target '$Target'" }
+    if ($Target -eq "all") {
+      $what = 'all tests'
+    } else {
+      $what = if ($Target -match '^unit') { 'unit tests' } elseif ($Target -match '^integration') { 'integration tests' } elseif ($Target -match '^performance') { 'performance tests' } else { "tests for target '$Target'" }
+    }
     Write-Host "[STEP] Configure CMake for $what..." -ForegroundColor Cyan
     & cmake @cmakeArgs
 
-    Write-Host "[STEP] Build target: $Target ($Config)..." -ForegroundColor Cyan
-    $buildArgs = @("--build", $BuildDir, "--config", $Config, "--target", $Target)
-    & cmake @buildArgs
+    if ($Target -eq "all") {
+      Write-Host "[STEP] Build all test targets ($Config)..." -ForegroundColor Cyan
+      $targets = @("unit_tests", "integration_tests", "performance_tests")
+      foreach ($t in $targets) {
+        Write-Host "  - Building $t" -ForegroundColor DarkCyan
+        $buildArgs = @("--build", $BuildDir, "--config", $Config, "--target", $t)
+        & cmake @buildArgs
+      }
+    } else {
+      Write-Host "[STEP] Build target: $Target ($Config)..." -ForegroundColor Cyan
+      $buildArgs = @("--build", $BuildDir, "--config", $Config, "--target", $Target)
+      & cmake @buildArgs
+    }
   }
 
   if ($Run.IsPresent -or $JustTest.IsPresent) {
-    Write-Host "[STEP] Run tests via ctest (pattern: $Target)..." -ForegroundColor Cyan
-    & ctest "--test-dir" $BuildDir "-C" $Config "-R" $Target "--output-on-failure"
+    if ($Target -eq "all") {
+      Write-Host "[STEP] Run all tests via ctest..." -ForegroundColor Cyan
+      & ctest "--test-dir" $BuildDir "-C" $Config "--output-on-failure"
+    } else {
+      Write-Host "[STEP] Run tests via ctest (pattern: $Target)..." -ForegroundColor Cyan
+      & ctest "--test-dir" $BuildDir "-C" $Config "-R" $Target "--output-on-failure"
+    }
 
-    # 如果运行的是单元测试，则列出生成的数据文件
-    if ($Target -eq "unit_tests") {
+    if ($Target -eq "unit_tests" -or $Target -eq "all") {
       Write-Host "[INFO] Unit test execution completed. Check test data files:" -ForegroundColor Yellow
       $dataDir = Join-Path (Split-Path -Parent $scriptDir) "tests\data"
       if (Test-Path $dataDir) {
         $files = Get-ChildItem -Path $dataDir -Filter "multi_simulation_results_step_*.json" -ErrorAction SilentlyContinue
         if ($files) {
           $files | ForEach-Object { Write-Host "  - $($_.FullName)" -ForegroundColor Gray }
-        } else {
-          Write-Host "  (no multi_simulation_results_step_*.json files found)" -ForegroundColor DarkGray
         }
       } else {
         Write-Host "  (data directory not found: $dataDir)" -ForegroundColor DarkGray
