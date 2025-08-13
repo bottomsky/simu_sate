@@ -9,6 +9,7 @@ build/
 bin/
 obj/
 tests/build-integration/
+tests/build-performance/
 tests/build-unit/
 tests/data/
 
