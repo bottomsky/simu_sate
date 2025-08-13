@@ -1,13 +1,18 @@
 #include "constellation_propagator.h"
 #include <algorithm>
 #include <cstring>
+#if defined(HAVE_CUDA_TOOLKIT)
+#include <cuda_runtime_api.h>
+#endif
 
 ConstellationPropagator::ConstellationPropagator(double epoch_time)
     : epoch_time_(epoch_time), current_time_(epoch_time), step_size_(60.0), 
       compute_mode_(CPU_SIMD) {
 #ifdef __CUDACC__
-    d_elements_data_ = nullptr;
+    d_a_ = d_e_ = d_i_ = d_O_ = d_w_ = d_M_ = nullptr;
+    d_x_ = d_y_ = d_z_ = nullptr;
     gpu_buffer_size_ = 0;
+    cuda_stream_ = 0;
 #endif
 }
 
@@ -68,12 +73,12 @@ void ConstellationPropagator::propagateConstellation(double target_time) {
                     propagateSIMD(dt);
                     break;
                 case GPU_CUDA:
-#ifdef __CUDACC__
-                    propagateCUDA(dt);
-#else
-                    std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
-                    propagateSIMD(dt);
-#endif
+                    if (isCudaAvailable()) {
+                        propagateCUDA(dt);
+                    } else {
+                        std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
+                        propagateSIMD(dt);
+                    }
                     break;
             }
             
@@ -101,12 +106,12 @@ void ConstellationPropagator::propagateConstellation(double target_time) {
                     case CPU_SCALAR: propagateScalar(dt); break;
                     case CPU_SIMD:   propagateSIMD(dt);   break;
                     case GPU_CUDA:
-#ifdef __CUDACC__
-                        propagateCUDA(dt);
-#else
-                        std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
-                        propagateSIMD(dt);
-#endif
+                        if (isCudaAvailable()) {
+                            propagateCUDA(dt);
+                        } else {
+                            std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
+                            propagateSIMD(dt);
+                        }
                         break;
                 }
                 remaining_time -= dt;
@@ -206,7 +211,7 @@ void ConstellationPropagator::propagateSIMD(double dt) {
     auto computeDerivativesSIMD = [&](__m256d a_vec, __m256d e_vec, __m256d i_vec) -> std::array<__m256d, 3> {
         // 计算平均角速度 n = sqrt(MU / a^3)
         __m256d a3 = _mm256_mul_pd(_mm256_mul_pd(a_vec, a_vec), a_vec);
-        __m256d n_vec = _mm256_sqrt_pd(_mm256_div_pd(mu_vec, a3));
+        __m256d mean_motion_vec = _mm256_sqrt_pd(_mm256_div_pd(mu_vec, a3));
         
         // 避免奇异性检查（简化）
         __m256d e2 = _mm256_mul_pd(e_vec, e_vec);
@@ -216,7 +221,7 @@ void ConstellationPropagator::propagateSIMD(double dt) {
         __m256d p = _mm256_mul_pd(a_vec, one_minus_e2);
         __m256d re_over_p = _mm256_div_pd(re_vec, p);
         __m256d re_over_p_sq = _mm256_mul_pd(re_over_p, re_over_p);
-        __m256d factor_norm = _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(one_point_five, j2_vec), n_vec), re_over_p_sq);
+        __m256d factor_norm = _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(one_point_five, j2_vec), mean_motion_vec), re_over_p_sq);
         
         // 计算三角函数
         __m256d cos_i, sin_i;
@@ -234,7 +239,7 @@ void ConstellationPropagator::propagateSIMD(double dt) {
         __m256d sqrt_one_minus_e2 = _mm256_sqrt_pd(one_minus_e2);
         __m256d dM_term = _mm256_mul_pd(factor_norm, _mm256_mul_pd(sqrt_one_minus_e2, 
                                        _mm256_sub_pd(_mm256_mul_pd(one_point_five, sin2_i), half)));
-        __m256d dM_dt = _mm256_sub_pd(n_vec, dM_term);
+        __m256d dM_dt = _mm256_sub_pd(mean_motion_vec, dM_term);
         
         return {dO_dt, dw_dt, dM_dt};
     };
@@ -474,33 +479,141 @@ double ConstellationPropagator::normalizeAngle(double angle) const {
     return angle;
 }
 
-bool ConstellationPropagator::isCudaAvailable() {
-#ifdef __CUDACC__
-    int device_count;
-    return (cudaGetDeviceCount(&device_count) == cudaSuccess && device_count > 0);
+bool ConstellationPropagator::isCudaAvailable() noexcept {
+#if defined(HAVE_CUDA_TOOLKIT)
+    // 缓存检测结果，避免每帧重复调用带来的开销
+    static const bool available = []() noexcept {
+        int device_count = 0;
+        cudaError_t err = cudaGetDeviceCount(&device_count);
+        return (err == cudaSuccess && device_count > 0);
+    }();
+    return available;
 #else
+    // 未启用CUDA工具链时，避免链接到cudart，直接返回不可用
     return false;
 #endif
 }
 
-#ifdef __CUDACC__
 void ConstellationPropagator::propagateCUDA(double dt) {
-    // CUDA实现留给具体的CUDA文件
-    std::cerr << "CUDA implementation not yet complete" << std::endl;
-    propagateSIMD(dt);  // 回退到SIMD
+#if defined(HAVE_CUDA_TOOLKIT)
+    size_t n = elements_.size();
+    if (n == 0) return;
+
+    // 在启用了CUDA工具链时，采用优化的持久化缓冲区实现
+    #ifdef __CUDACC__
+    // 确保GPU缓冲区已初始化
+    if (gpu_buffer_size_ < n) {
+        initializeCUDA();
+    }
+
+    // 异步传输主机数据到设备（SoA格式，无需重排）
+    size_t size = n * sizeof(double);
+    cudaMemcpyAsync(d_a_, elements_.a.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
+    cudaMemcpyAsync(d_e_, elements_.e.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
+    cudaMemcpyAsync(d_i_, elements_.i.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
+    cudaMemcpyAsync(d_O_, elements_.O.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
+    cudaMemcpyAsync(d_w_, elements_.w.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
+    cudaMemcpyAsync(d_M_, elements_.M.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
+
+    // 启动优化的CUDA内核（异步）
+    cuda_propagate_j2_persistent(d_a_, d_e_, d_i_, d_O_, d_w_, d_M_, 
+                                n, dt, MU, RE, J2, cuda_stream_);
+
+    // 异步传输结果回主机（只有变化的轨道要素）
+    cudaMemcpyAsync(elements_.O.data(), d_O_, size, cudaMemcpyDeviceToHost, cuda_stream_);
+    cudaMemcpyAsync(elements_.w.data(), d_w_, size, cudaMemcpyDeviceToHost, cuda_stream_);
+    cudaMemcpyAsync(elements_.M.data(), d_M_, size, cudaMemcpyDeviceToHost, cuda_stream_);
+
+    // 同步流确保操作完成
+    cudaStreamSynchronize(cuda_stream_);
+    #else
+    // 在C++编译环境下，通过外部C接口调用CUDA内核
+    // 将SoA打包为AoS临时缓冲区，接口假设连续布局 [a,e,i,O,w,M]*n
+    std::vector<double> elems(6 * n);
+    for (size_t idx = 0; idx < n; ++idx) {
+        elems[idx + n * 0] = elements_.a[idx];
+        elems[idx + n * 1] = elements_.e[idx];
+        elems[idx + n * 2] = elements_.i[idx];
+        elems[idx + n * 3] = elements_.O[idx];
+        elems[idx + n * 4] = elements_.w[idx];
+        elems[idx + n * 5] = elements_.M[idx];
+    }
+
+    // 调用优化的CUDA接口
+    cuda_propagate_j2_persistent(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                                n, dt, MU, RE, J2, nullptr);
+    
+    // 调用老的CUDA核外推一步
+    cuda_propagate_j2(elems.data(), n, dt, MU, RE, J2);
+
+    // 写回结果（角度已在内核中归一化）
+    for (size_t idx = 0; idx < n; ++idx) {
+        elements_.a[idx] = elems[idx + n * 0];
+        elements_.e[idx] = elems[idx + n * 1];
+        elements_.i[idx] = elems[idx + n * 2];
+        elements_.O[idx] = elems[idx + n * 3];
+        elements_.w[idx] = elems[idx + n * 4];
+        elements_.M[idx] = elems[idx + n * 5];
+    }
+    #endif
+#else
+    // 回退到CPU实现
+    std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
+    propagateSIMD(dt);
+#endif
 }
 
 void ConstellationPropagator::initializeCUDA() {
-    // CUDA初始化代码
+#if defined(HAVE_CUDA_TOOLKIT) && defined(__CUDACC__)
+    size_t n = elements_.size();
+    if (n > 0 && gpu_buffer_size_ < n) {
+        // 清理旧缓冲区
+        cleanupCUDA();
+        
+        // 分配新的持久化缓冲区
+        size_t size = n * sizeof(double);
+        cudaMalloc(&d_a_, size);
+        cudaMalloc(&d_e_, size);
+        cudaMalloc(&d_i_, size);
+        cudaMalloc(&d_O_, size);
+        cudaMalloc(&d_w_, size);
+        cudaMalloc(&d_M_, size);
+        cudaMalloc(&d_x_, size);
+        cudaMalloc(&d_y_, size);
+        cudaMalloc(&d_z_, size);
+        
+        // 创建CUDA流用于异步操作
+        cudaStreamCreate(&cuda_stream_);
+        
+        gpu_buffer_size_ = n;
+    }
+#endif
 }
 
 void ConstellationPropagator::cleanupCUDA() {
-    if (d_elements_data_) {
-        cudaFree(d_elements_data_);
-        d_elements_data_ = nullptr;
+#if defined(HAVE_CUDA_TOOLKIT) && defined(__CUDACC__)
+    if (gpu_buffer_size_ > 0) {
+        cudaFree(d_a_);
+        cudaFree(d_e_);
+        cudaFree(d_i_);
+        cudaFree(d_O_);
+        cudaFree(d_w_);
+        cudaFree(d_M_);
+        cudaFree(d_x_);
+        cudaFree(d_y_);
+        cudaFree(d_z_);
+        
+        if (cuda_stream_) {
+            cudaStreamDestroy(cuda_stream_);
+            cuda_stream_ = 0;
+        }
+        
+        d_a_ = d_e_ = d_i_ = d_O_ = d_w_ = d_M_ = nullptr;
+        d_x_ = d_y_ = d_z_ = nullptr;
+        gpu_buffer_size_ = 0;
     }
-}
 #endif
+}
 
 double ConstellationPropagator::estimateLocalErrorScalar(const CompactOrbitalElements& elem, double dt) {
     // 单步：基于简化模型积分一次

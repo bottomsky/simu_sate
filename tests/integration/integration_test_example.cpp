@@ -22,6 +22,17 @@ protected:
     double stepSize;
 };
 
+/**
+ * @brief 测试单卫星传播器与星座传播器在单颗卫星情况下的结果一致性
+ * 
+ * 该测试用例验证了使用单卫星传播器和星座传播器（只添加一颗卫星）在相同初始条件下
+ * 传播相同时间后，得到的卫星位置是否一致。用于确保两种传播器实现的一致性。
+ * 
+ * 测试流程：
+ * 1. 使用J2轨道摄动模型，通过单卫星传播器计算1小时后的卫星位置
+ * 2. 使用星座传播器（只添加一颗卫星）计算1小时后的卫星位置
+ * 3. 比较两个结果的位置分量，验证其在1米精度范围内的差异
+ */
 TEST_F(IntegrationTest, SingleVsConstellationConsistency) {
     // 使用单卫星传播器
     OrbitalElements elements = {a, e, i, Omega, omega, M, 0.0};

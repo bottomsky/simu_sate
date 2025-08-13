@@ -49,14 +49,20 @@ if(PERFORMANCE_TEST_SOURCES)
         target_compile_options(performance_tests PRIVATE 
             $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
         )
+        # 为C++编译单元提供CUDA运行时头与库
+        target_compile_definitions(performance_tests PRIVATE HAVE_CUDA_TOOLKIT=1)
+        target_link_libraries(performance_tests PRIVATE CUDA::cudart)
     endif()
     
     # 链接库
     target_link_libraries(performance_tests PRIVATE 
         GTest::gtest 
         GTest::gtest_main
-        Eigen3::Eigen
     )
+    # Eigen 为头文件库，某些环境不会提供 Eigen3::Eigen 目标，存在时再链接
+    if(TARGET Eigen3::Eigen)
+        target_link_libraries(performance_tests PRIVATE Eigen3::Eigen)
+    endif()
     
     add_test(NAME performance_tests COMMAND performance_tests)
 endif()

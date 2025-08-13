@@ -139,23 +139,22 @@ Eigen::VectorXd J2OrbitPropagator::computeDerivatives(const OrbitalElements& ele
     }
 
     // 计算公共计算因子，以提高效率。
-    double n = std::sqrt(MU / (a * a * a)); // 平均角速度
+    double mean_motion = std::sqrt(MU / (a * a * a)); // 平均角速度
     double p = a * (1.0 - e * e);           // 半通径
-    double factor = (3.0 / 2.0) * J2 * n * (RE / p) * (RE / p);
+    double factor = (3.0 / 2.0) * J2 * mean_motion * (RE / p) * (RE / p);
 
     double cos_i = std::cos(i);
     double sin_i_sq = std::sin(i) * std::sin(i);
-
-    // 升交点赤经(O)的变化率 (dO/dt)
+    
+    // 计算J2摄动导数：
+    // dO/dt (升交点赤经)
     derivatives[3] = -factor * cos_i;
     
-    // 近地点幅角(w)的变化率 (dw/dt)
-    derivatives[4] = factor * (2.0 - 2.5 * sin_i_sq);
+    // dw/dt (近地点幅角)
+    derivatives[4] = factor * (2.5 * sin_i_sq - 2.0);
     
-    // 平近点角(M)的变化率 (dM/dt)
-    // 包含自然运动(n)和J2摄动引起的附加项。
-    // 注意：J2摄动项应为负值，因为J2效应会减缓卫星的平均运动
-    derivatives[5] = n - factor * std::sqrt(1.0 - e * e) * (1.5 * sin_i_sq - 0.5);
+    // dM/dt (平近点角)
+    derivatives[5] = mean_motion - factor * std::sqrt(1.0 - e * e) * (1.5 * sin_i_sq - 0.5);
     
     return derivatives;
 }

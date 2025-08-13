@@ -69,6 +69,27 @@ void cuda_compute_positions(double* elements, double* positions,
     // 如果在没有CUDA支持的情况下调用此函数，则向标准错误流打印警告。
     std::cerr << "Warning: CUDA not available. Please use CPU_SCALAR or CPU_SIMD mode." << std::endl;
 }
+
+/**
+ * @brief 优化的CUDA接口（空实现）：使用持久化缓冲区的J2外推
+ */
+void cuda_propagate_j2_persistent(double* d_a, double* d_e, double* d_i,
+                                 double* d_O, double* d_w, double* d_M,
+                                 size_t num_satellites, double dt,
+                                 double mu, double re, double j2,
+                                 void* stream) {
+    std::cerr << "Warning: CUDA not available. Please use CPU_SCALAR or CPU_SIMD mode." << std::endl;
+}
+
+/**
+ * @brief 优化的CUDA接口（空实现）：使用持久化缓冲区的位置计算
+ */
+void cuda_compute_positions_persistent(double* d_a, double* d_e, double* d_i,
+                                      double* d_O, double* d_w, double* d_M,
+                                      double* d_x, double* d_y, double* d_z,
+                                      size_t num_satellites, void* stream) {
+    std::cerr << "Warning: CUDA not available. Please use CPU_SCALAR or CPU_SIMD mode." << std::endl;
+}
 }
 #else
 
@@ -353,6 +374,53 @@ extern "C" {
         cudaFree(d_x);
         cudaFree(d_y);
         cudaFree(d_z);
+    }
+    
+    /**
+     * @brief 优化的CUDA接口：使用持久化缓冲区的J2外推
+     * 
+     * @param d_a 设备端半长轴数组指针
+     * @param d_e 设备端偏心率数组指针  
+     * @param d_i 设备端倾角数组指针
+     * @param d_O 设备端升交点赤经数组指针
+     * @param d_w 设备端近地点幅角数组指针
+     * @param d_M 设备端平近点角数组指针
+     * @param num_satellites 卫星数量
+     * @param dt 时间步长
+     * @param mu 地球引力常数
+     * @param re 地球赤道半径 
+     * @param j2 地球J2摄动系数
+     * @param stream CUDA流（异步执行）
+     */
+    void cuda_propagate_j2_persistent(double* d_a, double* d_e, double* d_i,
+                                     double* d_O, double* d_w, double* d_M,
+                                     size_t num_satellites, double dt,
+                                     double mu, double re, double j2,
+                                     cudaStream_t stream) {
+        // 更新常量内存
+        cudaMemcpyToSymbol(d_MU, &mu, sizeof(double));
+        cudaMemcpyToSymbol(d_RE, &re, sizeof(double));
+        cudaMemcpyToSymbol(d_J2, &j2, sizeof(double));
+        
+        // 启动内核（异步）
+        int threadsPerBlock = 256;
+        int blocksPerGrid = (static_cast<int>(num_satellites) + threadsPerBlock - 1) / threadsPerBlock;
+        j2_propagate_kernel<<<blocksPerGrid, threadsPerBlock, 0, stream>>>(
+            d_a, d_e, d_i, d_O, d_w, d_M, static_cast<int>(num_satellites), dt);
+    }
+    
+    /**
+     * @brief 优化的CUDA接口：使用持久化缓冲区的位置计算
+     */
+    void cuda_compute_positions_persistent(double* d_a, double* d_e, double* d_i,
+                                          double* d_O, double* d_w, double* d_M,
+                                          double* d_x, double* d_y, double* d_z,
+                                          size_t num_satellites, cudaStream_t stream) {
+        // 启动内核（异步）
+        int threadsPerBlock = 256;
+        int blocksPerGrid = (static_cast<int>(num_satellites) + threadsPerBlock - 1) / threadsPerBlock;
+        compute_positions_kernel<<<blocksPerGrid, threadsPerBlock, 0, stream>>>(
+            d_a, d_e, d_i, d_O, d_w, d_M, d_x, d_y, d_z, static_cast<int>(num_satellites));
     }
 }
 #endif // __CUDACC__
