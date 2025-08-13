@@ -1,5 +1,5 @@
-#ifndef MATH_CONSTANTS_H
-#define MATH_CONSTANTS_H
+#ifndef MATH_DEFS_H
+#define MATH_DEFS_H
 
 #include <cmath>
 #include <Eigen/Dense>
@@ -251,4 +251,4 @@ inline Eigen::Vector3d ecefToEciVelocity(const Eigen::Vector3d& r_ecef, const Ei
     return R * (v_ecef + omega_earth.cross(r_ecef));
 }
 
-#endif // MATH_CONSTANTS_H
+#endif // MATH_DEFS_H
