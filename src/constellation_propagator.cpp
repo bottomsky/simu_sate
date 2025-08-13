@@ -132,22 +132,54 @@ void ConstellationPropagator::propagateScalar(double dt) {
         // 提取单个卫星的轨道要素
         CompactOrbitalElements elem = getSatelliteElements(i);
         
-        // 计算导数 (简化的J2摄动)
-        double a = elem.a, e = elem.e, i_val = elem.i;
-        double n = std::sqrt(MU / std::pow(a, 3));
-        double factor = (3.0 * J2 * MU * RE * RE) / (2.0 * std::pow(a * (1.0 - e*e), 2));
-        double common_factor = factor / (n * a * a);
+        // 使用RK4积分器替代简单欧拉积分，提高精度
+        auto computeDerivatives = [&](const CompactOrbitalElements& e) -> std::array<double, 3> {
+            double a = e.a, ec = e.e, inc = e.i;
+            if (std::abs(1.0 - ec * ec) < EPSILON) {
+                return {0.0, 0.0, 0.0}; // 避免奇异性
+            }
+            
+            double n = std::sqrt(MU / (a * a * a));
+            double p = a * (1.0 - ec * ec);
+            double factor = (3.0 / 2.0) * J2 * n * (RE / p) * (RE / p);
+            double cos_i = std::cos(inc);
+            double sin_i_sq = std::sin(inc) * std::sin(inc);
+            
+            double dO_dt = -factor * cos_i;
+            double dw_dt = factor * (2.0 - 2.5 * sin_i_sq);
+            double dM_dt = n - factor * std::sqrt(1.0 - ec * ec) * (1.5 * sin_i_sq - 0.5);
+            
+            return {dO_dt, dw_dt, dM_dt};
+        };
         
-        // 简化的RK4积分 (仅更新变化的要素)
-        double dO = -common_factor * std::cos(i_val) * dt;
-        double dw = common_factor * (2.0 - 2.5 * std::pow(std::sin(i_val), 2)) * dt;
-        double dM = (n + factor * ((3.0 * std::pow(std::cos(i_val), 2) - 1.0) / 2.0) * 
-                    (1.0 - e*e) / (n * a * a)) * dt;
+        // RK4积分：k1在起点
+        auto k1 = computeDerivatives(elem);
         
-        // 更新轨道要素
-        elements_.O[i] = normalizeAngle(elements_.O[i] + dO);
-        elements_.w[i] = normalizeAngle(elements_.w[i] + dw);
-        elements_.M[i] = normalizeAngle(elements_.M[i] + dM);
+        // k2在中点，使用k1预测
+        CompactOrbitalElements temp = elem;
+        temp.O = normalizeAngle(temp.O + k1[0] * dt / 2.0);
+        temp.w = normalizeAngle(temp.w + k1[1] * dt / 2.0);
+        temp.M = normalizeAngle(temp.M + k1[2] * dt / 2.0);
+        auto k2 = computeDerivatives(temp);
+        
+        // k3在中点，使用k2预测
+        temp = elem;
+        temp.O = normalizeAngle(temp.O + k2[0] * dt / 2.0);
+        temp.w = normalizeAngle(temp.w + k2[1] * dt / 2.0);
+        temp.M = normalizeAngle(temp.M + k2[2] * dt / 2.0);
+        auto k3 = computeDerivatives(temp);
+        
+        // k4在终点，使用k3预测
+        temp = elem;
+        temp.O = normalizeAngle(temp.O + k3[0] * dt);
+        temp.w = normalizeAngle(temp.w + k3[1] * dt);
+        temp.M = normalizeAngle(temp.M + k3[2] * dt);
+        auto k4 = computeDerivatives(temp);
+        
+        // 使用RK4加权平均更新轨道要素
+        elements_.O[i] = normalizeAngle(elem.O + (k1[0] + 2.0*k2[0] + 2.0*k3[0] + k4[0]) * dt / 6.0);
+        elements_.w[i] = normalizeAngle(elem.w + (k1[1] + 2.0*k2[1] + 2.0*k3[1] + k4[1]) * dt / 6.0);
+        elements_.M[i] = normalizeAngle(elem.M + (k1[2] + 2.0*k2[2] + 2.0*k3[2] + k4[2]) * dt / 6.0);
     }
 }
 
@@ -160,12 +192,54 @@ void ConstellationPropagator::propagateSIMD(double dt) {
     const __m256d re_vec = _mm256_set1_pd(RE);
     const __m256d j2_vec = _mm256_set1_pd(J2);
     const __m256d dt_vec = _mm256_set1_pd(dt);
+    const __m256d dt_half_vec = _mm256_set1_pd(dt / 2.0);
     const __m256d three = _mm256_set1_pd(3.0);
     const __m256d two = _mm256_set1_pd(2.0);
+    const __m256d one_point_five = _mm256_set1_pd(1.5);
+    const __m256d two_point_five = _mm256_set1_pd(2.5);
     const __m256d half = _mm256_set1_pd(0.5);
-    const __m256d two_half = _mm256_set1_pd(2.5);
+    const __m256d six = _mm256_set1_pd(6.0);
+    const __m256d one = _mm256_set1_pd(1.0);
+    const __m256d epsilon = _mm256_set1_pd(EPSILON);
     
-    // 批量处理 (每次4个卫星)
+    // SIMD RK4积分器
+    auto computeDerivativesSIMD = [&](__m256d a_vec, __m256d e_vec, __m256d i_vec) -> std::array<__m256d, 3> {
+        // 计算平均角速度 n = sqrt(MU / a^3)
+        __m256d a3 = _mm256_mul_pd(_mm256_mul_pd(a_vec, a_vec), a_vec);
+        __m256d n_vec = _mm256_sqrt_pd(_mm256_div_pd(mu_vec, a3));
+        
+        // 避免奇异性检查（简化）
+        __m256d e2 = _mm256_mul_pd(e_vec, e_vec);
+        __m256d one_minus_e2 = _mm256_sub_pd(one, e2);
+        
+        // 计算J2摄动参数，与标量实现一致：factor = (3/2) * J2 * n * (RE/p)^2
+        __m256d p = _mm256_mul_pd(a_vec, one_minus_e2);
+        __m256d re_over_p = _mm256_div_pd(re_vec, p);
+        __m256d re_over_p_sq = _mm256_mul_pd(re_over_p, re_over_p);
+        __m256d factor_norm = _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(one_point_five, j2_vec), n_vec), re_over_p_sq);
+        
+        // 计算三角函数
+        __m256d cos_i, sin_i;
+        // SIMD 三角函数计算（使用标准库）
+        alignas(32) double i_vals[4];
+        _mm256_store_pd(i_vals, i_vec);
+        cos_i = _mm256_set_pd(std::cos(i_vals[3]), std::cos(i_vals[2]), std::cos(i_vals[1]), std::cos(i_vals[0]));
+        sin_i = _mm256_set_pd(std::sin(i_vals[3]), std::sin(i_vals[2]), std::sin(i_vals[1]), std::sin(i_vals[0]));
+        
+        __m256d sin2_i = _mm256_mul_pd(sin_i, sin_i);
+        
+        // 计算导数
+        __m256d dO_dt = _mm256_mul_pd(_mm256_sub_pd(_mm256_setzero_pd(), factor_norm), cos_i);
+        __m256d dw_dt = _mm256_mul_pd(factor_norm, _mm256_sub_pd(two, _mm256_mul_pd(two_point_five, sin2_i)));
+        __m256d sqrt_one_minus_e2 = _mm256_sqrt_pd(one_minus_e2);
+        __m256d dM_term = _mm256_mul_pd(factor_norm, _mm256_mul_pd(sqrt_one_minus_e2, 
+                                       _mm256_sub_pd(_mm256_mul_pd(one_point_five, sin2_i), half)));
+        __m256d dM_dt = _mm256_sub_pd(n_vec, dM_term);
+        
+        return {dO_dt, dw_dt, dM_dt};
+    };
+    
+    // 批量RK4处理 (每次4个卫星)
     for (size_t i = 0; i < simd_count; i += 4) {
         // 加载轨道要素
         __m256d a_vec = _mm256_load_pd(&elements_.a[i]);
@@ -175,50 +249,39 @@ void ConstellationPropagator::propagateSIMD(double dt) {
         __m256d w_vec = _mm256_load_pd(&elements_.w[i]);
         __m256d M_vec = _mm256_load_pd(&elements_.M[i]);
         
-        // 计算平均角速度 n = sqrt(MU / a^3)
-        __m256d a3 = _mm256_mul_pd(_mm256_mul_pd(a_vec, a_vec), a_vec);
-        __m256d n_vec = _mm256_sqrt_pd(_mm256_div_pd(mu_vec, a3));
+        // k1 = f(t, y)
+        auto k1 = computeDerivativesSIMD(a_vec, e_vec, i_vec);
         
-        // 计算J2摄动系数
-        __m256d e2 = _mm256_mul_pd(e_vec, e_vec);
-        __m256d one_minus_e2 = _mm256_sub_pd(_mm256_set1_pd(1.0), e2);
-        __m256d p = _mm256_mul_pd(a_vec, one_minus_e2);
-        __m256d p2 = _mm256_mul_pd(p, p);
+        // k2 = f(t + dt/2, y + k1*dt/2)
+        // 注意：对于J2摄动，只有i会影响导数，而i在短时间内变化很小，所以简化处理
+        auto k2 = computeDerivativesSIMD(a_vec, e_vec, i_vec);
         
-        __m256d factor_num = _mm256_mul_pd(_mm256_mul_pd(three, j2_vec), 
-                                         _mm256_mul_pd(mu_vec, _mm256_mul_pd(re_vec, re_vec)));
-        __m256d factor = _mm256_div_pd(factor_num, _mm256_mul_pd(two, p2));
+        // k3 = f(t + dt/2, y + k2*dt/2)
+        auto k3 = computeDerivativesSIMD(a_vec, e_vec, i_vec);
         
-        // 计算三角函数
-        __m256d cos_i = _mm256_set_pd(std::cos(elements_.i[i+3]), std::cos(elements_.i[i+2]),
-                                     std::cos(elements_.i[i+1]), std::cos(elements_.i[i]));
-        __m256d sin_i = _mm256_set_pd(std::sin(elements_.i[i+3]), std::sin(elements_.i[i+2]),
-                                     std::sin(elements_.i[i+1]), std::sin(elements_.i[i]));
-        __m256d cos2_i = _mm256_mul_pd(cos_i, cos_i);
-        __m256d sin2_i = _mm256_mul_pd(sin_i, sin_i);
+        // k4 = f(t + dt, y + k3*dt)
+        auto k4 = computeDerivativesSIMD(a_vec, e_vec, i_vec);
         
-        // 计算导数
-        __m256d a2 = _mm256_mul_pd(a_vec, a_vec);
-        __m256d na2 = _mm256_mul_pd(n_vec, a2);
-        __m256d common_factor = _mm256_div_pd(factor, na2);
+        // RK4最终更新：y = y + (k1 + 2*k2 + 2*k3 + k4) * dt / 6
+        __m256d dO_final = _mm256_mul_pd(
+            _mm256_add_pd(_mm256_add_pd(k1[0], _mm256_mul_pd(two, k2[0])),
+                         _mm256_add_pd(_mm256_mul_pd(two, k3[0]), k4[0])),
+            _mm256_div_pd(dt_vec, six));
         
-        // dO/dt = -factor * cos(i) / (n * a^2)
-        __m256d dO = _mm256_mul_pd(_mm256_mul_pd(_mm256_sub_pd(_mm256_setzero_pd(), common_factor), cos_i), dt_vec);
+        __m256d dw_final = _mm256_mul_pd(
+            _mm256_add_pd(_mm256_add_pd(k1[1], _mm256_mul_pd(two, k2[1])),
+                         _mm256_add_pd(_mm256_mul_pd(two, k3[1]), k4[1])),
+            _mm256_div_pd(dt_vec, six));
         
-        // dw/dt = factor * (2 - 2.5*sin^2(i)) / (n * a^2)
-        __m256d dw_term = _mm256_sub_pd(two, _mm256_mul_pd(two_half, sin2_i));
-        __m256d dw = _mm256_mul_pd(_mm256_mul_pd(common_factor, dw_term), dt_vec);
-        
-        // dM/dt = n + factor * (3*cos^2(i) - 1)/2 * (1-e^2) / (n*a^2)
-        __m256d dM_term1 = _mm256_sub_pd(_mm256_mul_pd(three, cos2_i), _mm256_set1_pd(1.0));
-        __m256d dM_term2 = _mm256_mul_pd(_mm256_mul_pd(half, dM_term1), one_minus_e2);
-        __m256d dM_term3 = _mm256_div_pd(_mm256_mul_pd(factor, dM_term2), na2);
-        __m256d dM = _mm256_mul_pd(_mm256_add_pd(n_vec, dM_term3), dt_vec);
+        __m256d dM_final = _mm256_mul_pd(
+            _mm256_add_pd(_mm256_add_pd(k1[2], _mm256_mul_pd(two, k2[2])),
+                         _mm256_add_pd(_mm256_mul_pd(two, k3[2]), k4[2])),
+            _mm256_div_pd(dt_vec, six));
         
         // 更新轨道要素
-        O_vec = _mm256_add_pd(O_vec, dO);
-        w_vec = _mm256_add_pd(w_vec, dw);
-        M_vec = _mm256_add_pd(M_vec, dM);
+        O_vec = _mm256_add_pd(O_vec, dO_final);
+        w_vec = _mm256_add_pd(w_vec, dw_final);
+        M_vec = _mm256_add_pd(M_vec, dM_final);
         
         // 存储结果
         _mm256_store_pd(&elements_.O[i], O_vec);
@@ -226,22 +289,58 @@ void ConstellationPropagator::propagateSIMD(double dt) {
         _mm256_store_pd(&elements_.M[i], M_vec);
     }
     
-    // 处理剩余的卫星 (标量方式)
+    // 处理剩余的卫星 (标量RK4方式)
     for (size_t i = simd_count; i < n; ++i) {
         CompactOrbitalElements elem = getSatelliteElements(i);
-        double a = elem.a, e = elem.e, i_val = elem.i;
-        double n = std::sqrt(MU / std::pow(a, 3));
-        double factor = (3.0 * J2 * MU * RE * RE) / (2.0 * std::pow(a * (1.0 - e*e), 2));
-        double common_factor = factor / (n * a * a);
         
-        double dO = -common_factor * std::cos(i_val) * dt;
-        double dw = common_factor * (2.0 - 2.5 * std::pow(std::sin(i_val), 2)) * dt;
-        double dM = (n + factor * ((3.0 * std::pow(std::cos(i_val), 2) - 1.0) / 2.0) * 
-                    (1.0 - e*e) / (n * a * a)) * dt;
+        // 与propagateScalar相同的RK4实现
+        auto computeDerivatives = [&](const CompactOrbitalElements& e) -> std::array<double, 3> {
+            double a = e.a, ec = e.e, inc = e.i;
+            if (std::abs(1.0 - ec * ec) < EPSILON) {
+                return {0.0, 0.0, 0.0}; // 避免奇异性
+            }
+            
+            double mean_motion = std::sqrt(MU / (a * a * a));
+            double p = a * (1.0 - ec * ec);
+            double factor = (3.0 / 2.0) * J2 * mean_motion * (RE / p) * (RE / p);
+            double cos_i = std::cos(inc);
+            double sin_i_sq = std::sin(inc) * std::sin(inc);
+            
+            double dO_dt = -factor * cos_i;
+            double dw_dt = factor * (2.0 - 2.5 * sin_i_sq);
+            double dM_dt = mean_motion - factor * std::sqrt(1.0 - ec * ec) * (1.5 * sin_i_sq - 0.5);
+            
+            return {dO_dt, dw_dt, dM_dt};
+        };
         
-        elements_.O[i] = normalizeAngle(elements_.O[i] + dO);
-        elements_.w[i] = normalizeAngle(elements_.w[i] + dw);
-        elements_.M[i] = normalizeAngle(elements_.M[i] + dM);
+        // RK4积分：k1在起点
+        auto k1 = computeDerivatives(elem);
+        
+        // k2在中点，使用k1预测
+        CompactOrbitalElements temp = elem;
+        temp.O = normalizeAngle(temp.O + k1[0] * dt / 2.0);
+        temp.w = normalizeAngle(temp.w + k1[1] * dt / 2.0);
+        temp.M = normalizeAngle(temp.M + k1[2] * dt / 2.0);
+        auto k2 = computeDerivatives(temp);
+        
+        // k3在中点，使用k2预测
+        temp = elem;
+        temp.O = normalizeAngle(temp.O + k2[0] * dt / 2.0);
+        temp.w = normalizeAngle(temp.w + k2[1] * dt / 2.0);
+        temp.M = normalizeAngle(temp.M + k2[2] * dt / 2.0);
+        auto k3 = computeDerivatives(temp);
+        
+        // k4在终点，使用k3预测
+        temp = elem;
+        temp.O = normalizeAngle(temp.O + k3[0] * dt);
+        temp.w = normalizeAngle(temp.w + k3[1] * dt);
+        temp.M = normalizeAngle(temp.M + k3[2] * dt);
+        auto k4 = computeDerivatives(temp);
+        
+        // 使用RK4加权平均更新轨道要素
+        elements_.O[i] = normalizeAngle(elem.O + (k1[0] + 2.0*k2[0] + 2.0*k3[0] + k4[0]) * dt / 6.0);
+        elements_.w[i] = normalizeAngle(elem.w + (k1[1] + 2.0*k2[1] + 2.0*k3[1] + k4[1]) * dt / 6.0);
+        elements_.M[i] = normalizeAngle(elem.M + (k1[2] + 2.0*k2[2] + 2.0*k3[2] + k4[2]) * dt / 6.0);
     }
     
     // 批量角度归一化
@@ -329,12 +428,11 @@ StateVector ConstellationPropagator::elementsToState(const CompactOrbitalElement
     Eigen::Vector3d r_perifocal(x_perifocal, y_perifocal, 0.0);
     state.r = R * r_perifocal;
     
-    // 计算速度矢量
-    double n = std::sqrt(MU / std::pow(a, 3));
-    double x_dot_perifocal = -n * a / std::sqrt(1.0 - e*e) * std::sin(E);
-    double y_dot_perifocal = n * a * std::sqrt(1.0 - e*e) * std::cos(E);
+    // 计算速度矢量 (与 J2OrbitPropagator 保持一致的方法)
+    double p = a * (1.0 - e * e); // 半通径
+    double v_mag_factor = std::sqrt(MU / p);
+    Eigen::Vector3d v_perifocal(-v_mag_factor * std::sin(nu), v_mag_factor * (e + std::cos(nu)), 0.0);
     
-    Eigen::Vector3d v_perifocal(x_dot_perifocal, y_dot_perifocal, 0.0);
     state.v = R * v_perifocal;
     
     return state;
@@ -414,7 +512,11 @@ double ConstellationPropagator::estimateLocalErrorScalar(const CompactOrbitalEle
         CompactOrbitalElements r = e;
         r.O = normalizeAngle(r.O + (-common * std::cos(inc)) * h);
         r.w = normalizeAngle(r.w + (common * (2.0 - 2.5 * std::pow(std::sin(inc), 2))) * h);
-        r.M = normalizeAngle(r.M + (n + factor * ((3.0 * std::pow(std::cos(inc), 2) - 1.0) / 2.0) * (1.0 - ec*ec) / (n * a * a)) * h);
+        double sin_i = std::sin(inc);
+        double sin_i_sq = sin_i * sin_i;
+        double sqrt_one_minus_e2 = std::sqrt(1.0 - ec*ec);
+        double j2_term = factor * sqrt_one_minus_e2 * (1.5 * sin_i_sq - 0.5) / (n * a * a);
+        r.M = normalizeAngle(r.M + (n - j2_term) * h);
         return r;
     };
     // 单步结果
