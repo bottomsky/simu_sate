@@ -7,15 +7,14 @@ set(CONSTELLATION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/j2_orbit_propagator.cpp
 )
 
-# 检查CUDA编译器是否可用
-find_package(CUDAToolkit QUIET)
-if(CUDAToolkit_FOUND)
-    enable_language(CUDA)
+# 检查CUDA是否可用（由父项目启用）
+get_property(languages GLOBAL PROPERTY ENABLED_LANGUAGES)
+if("CUDA" IN_LIST languages)
     set(CUDA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../../src/j2_cuda_kernels.cu)
-    message(STATUS "CUDA Toolkit found, enabling GPU acceleration for performance tests")
+    message(STATUS "CUDA language enabled, including GPU acceleration for performance tests")
 else()
     set(CUDA_SOURCES)
-    message(STATUS "CUDA Toolkit not found - performance tests will run on CPU only")
+    message(STATUS "CUDA language not enabled - performance tests will run on CPU only")
 endif()
 
 if(PERFORMANCE_TEST_SOURCES)
@@ -40,10 +39,15 @@ if(PERFORMANCE_TEST_SOURCES)
         target_compile_options(performance_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-mavx2> $<$<COMPILE_LANGUAGE:CXX>:-mfma>)
     endif()
 
-    # CUDA特定设置（仅在检测到CUDA编译器时）
-    if(CUDAToolkit_FOUND)
+    # CUDA特定设置（仅在CUDA可用时）
+    if("CUDA" IN_LIST languages)
         set_target_properties(performance_tests PROPERTIES
             CUDA_RUNTIME_LIBRARY Shared
+            CUDA_SEPARABLE_COMPILATION ON
+        )
+        # 为CUDA编译器添加适当的选项
+        target_compile_options(performance_tests PRIVATE 
+            $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
         )
     endif()
     

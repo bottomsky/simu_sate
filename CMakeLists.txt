@@ -1,5 +1,14 @@
 cmake_minimum_required(VERSION 3.12)
-project(J2OrbitPropagator VERSION 1.0.0 LANGUAGES CXX)
+
+# 检查CUDA编译器是否可用并启用CUDA语言
+find_package(CUDAToolkit QUIET)
+if(CUDAToolkit_FOUND)
+    project(J2OrbitPropagator VERSION 1.0.0 LANGUAGES CXX CUDA)
+    message(STATUS "CUDA Toolkit found, enabling CUDA language")
+else()
+    project(J2OrbitPropagator VERSION 1.0.0 LANGUAGES CXX)
+    message(STATUS "CUDA Toolkit not found")
+endif()
 
 # 设置C++标准
 set(CMAKE_CXX_STANDARD 17)
@@ -36,7 +45,7 @@ set(HEADERS
     include/j2_orbit_propagator.h
     include/j2_orbit_propagator_c.h
     include/common_types.h
-    include/math_constants.h
+    include/math_defs.h
 )
 
 # 创建静态库
@@ -134,3 +143,6 @@ message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  C++ standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build examples: ${BUILD_EXAMPLES}")
 message(STATUS "  Build tests: ${BUILD_TESTS}")
+if(CUDAToolkit_FOUND)
+    message(STATUS "  CUDA version: ${CUDAToolkit_VERSION}")
+endif()

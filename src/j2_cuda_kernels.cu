@@ -37,11 +37,11 @@
 #include <device_launch_parameters.h>
 #endif
 #include <cmath>
-#include <iostream>
 #include <cstddef>
 
 // 当没有CUDA时，提供空的实现，以确保代码可以链接和编译。
 #ifndef __CUDACC__
+#include <iostream>
 extern "C" {
 /**
  * @brief J2轨道外推的CUDA接口（空实现）。
@@ -226,7 +226,7 @@ extern "C" {
      *
      * 该函数负责管理内存传输（主机到设备，设备到主机）和启动`j2_propagate_kernel`内核。
      *
-     * @param elements 指向主机内存中轨道要素数据数组的指针（SoA布局）。
+     * @param elements 指向主机内存中轨道要素数据的指针（SoA布局）。
      * @param num_satellites 卫星数量。
      * @param dt 时间步长（秒）。
      * @param mu 地球引力常数。
@@ -252,35 +252,33 @@ extern "C" {
         cudaMalloc(&d_w, size);
         cudaMalloc(&d_M, size);
         
-        // 将轨道要素数据从主机内存(elements)复制到设备内存。
-        // 数据按SoA布局，因此需要根据偏移量分别复制每个要素。
-        cudaMemcpy(d_a, elements, size, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_e, elements + num_satellites, size, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_i, elements + 2*num_satellites, size, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_O, elements + 3*num_satellites, size, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_w, elements + 4*num_satellites, size, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_M, elements + 5*num_satellites, size, cudaMemcpyHostToDevice);
+        // 将数据从主机内存复制到设备内存。
+        double* a = elements;
+        double* e = elements + num_satellites;
+        double* i = elements + 2 * num_satellites;
+        double* O = elements + 3 * num_satellites;
+        double* w = elements + 4 * num_satellites;
+        double* M = elements + 5 * num_satellites;
         
-        // 计算CUDA内核启动配置：线程块大小和网格大小。
-        int block_size = 256; // 每个线程块包含256个线程，这是一个常见的选择。
-        int grid_size = (num_satellites + block_size - 1) / block_size; // 确保有足够的线程块来覆盖所有卫星。
+        cudaMemcpy(d_a, a, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_e, e, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_i, i, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_O, O, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_w, w, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_M, M, size, cudaMemcpyHostToDevice);
         
-        // 启动J2外推内核。
-        j2_propagate_kernel<<<grid_size, block_size>>>(
-            d_a, d_e, d_i, d_O, d_w, d_M, num_satellites, dt);
+        // 启动内核。每个线程处理一个卫星。
+        int threadsPerBlock = 256;
+        int blocksPerGrid = (static_cast<int>(num_satellites) + threadsPerBlock - 1) / threadsPerBlock;
+        j2_propagate_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_a, d_e, d_i, d_O, d_w, d_M, static_cast<int>(num_satellites), dt);
+        cudaDeviceSynchronize();
         
-        // 检查内核启动或执行过程中是否发生错误。
-        cudaError_t error = cudaGetLastError();
-        if (error != cudaSuccess) {
-            printf("CUDA kernel error in j2_propagate_kernel: %s\n", cudaGetErrorString(error));
-        }
+        // 将结果从设备内存复制回主机内存。
+        cudaMemcpy(O, d_O, size, cudaMemcpyDeviceToHost);
+        cudaMemcpy(w, d_w, size, cudaMemcpyDeviceToHost);
+        cudaMemcpy(M, d_M, size, cudaMemcpyDeviceToHost);
         
-        // 将更新后的轨道要素（O, w, M）从设备内存复制回主机内存。
-        cudaMemcpy(elements + 3*num_satellites, d_O, size, cudaMemcpyDeviceToHost);
-        cudaMemcpy(elements + 4*num_satellites, d_w, size, cudaMemcpyDeviceToHost);
-        cudaMemcpy(elements + 5*num_satellites, d_M, size, cudaMemcpyDeviceToHost);
-        
-        // 释放设备上分配的内存。
+        // 释放设备内存。
         cudaFree(d_a);
         cudaFree(d_e);
         cudaFree(d_i);
@@ -288,21 +286,20 @@ extern "C" {
         cudaFree(d_w);
         cudaFree(d_M);
     }
-    
+
     /**
-     * @brief 从轨道要素计算位置的CUDA接口函数。
+     * @brief 计算位置的CUDA接口函数。
      *
-     * 该函数负责管理内存传输和启动`compute_positions_kernel`内核。
+     * 该函数负责内存管理和启动`compute_positions_kernel`内核，将轨道要素转换为ECI坐标。
      *
-     * @param elements 指向主机内存中轨道要素数据数组的指针（SoA布局）。
-     * @param positions 指向主机内存中用于存储位置坐标的数组指针（SoA布局）。
+     * @param elements 指向主机内存中轨道要素数据的指针（SoA布局）。
+     * @param positions 指向主机内存中输出位置数据的指针（SoA布局）。
      * @param num_satellites 卫星数量。
      */
-    void cuda_compute_positions(double* elements, double* positions, 
-                               size_t num_satellites) {
-        // 在GPU设备上为轨道要素和位置坐标分配内存。
+    void cuda_compute_positions(double* elements, double* positions, size_t num_satellites) {
+        // 在GPU设备上为轨道要素和位置数组分配内存。
         double *d_a, *d_e, *d_i, *d_O, *d_w, *d_M;
-        double *d_pos_x, *d_pos_y, *d_pos_z;
+        double *d_x, *d_y, *d_z;
         size_t size = num_satellites * sizeof(double);
         
         cudaMalloc(&d_a, size);
@@ -311,42 +308,51 @@ extern "C" {
         cudaMalloc(&d_O, size);
         cudaMalloc(&d_w, size);
         cudaMalloc(&d_M, size);
-        cudaMalloc(&d_pos_x, size);
-        cudaMalloc(&d_pos_y, size);
-        cudaMalloc(&d_pos_z, size);
+        cudaMalloc(&d_x, size);
+        cudaMalloc(&d_y, size);
+        cudaMalloc(&d_z, size);
         
-        // 将轨道要素数据从主机内存复制到设备内存。
-        cudaMemcpy(d_a, elements, size, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_e, elements + num_satellites, size, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_i, elements + 2*num_satellites, size, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_O, elements + 3*num_satellites, size, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_w, elements + 4*num_satellites, size, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_M, elements + 5*num_satellites, size, cudaMemcpyHostToDevice);
+        // 将数据从主机内存复制到设备内存。
+        double* a = elements;
+        double* e = elements + num_satellites;
+        double* i = elements + 2 * num_satellites;
+        double* O = elements + 3 * num_satellites;
+        double* w = elements + 4 * num_satellites;
+        double* M = elements + 5 * num_satellites;
         
-        // 计算CUDA内核启动配置。
-        int block_size = 256;
-        int grid_size = (num_satellites + block_size - 1) / block_size;
+        cudaMemcpy(d_a, a, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_e, e, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_i, i, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_O, O, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_w, w, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_M, M, size, cudaMemcpyHostToDevice);
         
-        // 启动位置计算内核。
-        compute_positions_kernel<<<grid_size, block_size>>>(
-            d_a, d_e, d_i, d_O, d_w, d_M, d_pos_x, d_pos_y, d_pos_z, num_satellites);
-
-        // 检查内核启动或执行过程中是否发生错误。
-        cudaError_t error = cudaGetLastError();
-        if (error != cudaSuccess) {
-            printf("CUDA kernel error in compute_positions_kernel: %s\n", cudaGetErrorString(error));
-        }
+        // 启动内核。
+        int threadsPerBlock = 256;
+        int blocksPerGrid = (static_cast<int>(num_satellites) + threadsPerBlock - 1) / threadsPerBlock;
+        compute_positions_kernel<<<blocksPerGrid, threadsPerBlock>>>(
+            d_a, d_e, d_i, d_O, d_w, d_M, d_x, d_y, d_z, static_cast<int>(num_satellites));
+        cudaDeviceSynchronize();
         
-        // 将计算出的位置坐标从设备内存复制回主机内存。
-        cudaMemcpy(positions, d_pos_x, size, cudaMemcpyDeviceToHost);
-        cudaMemcpy(positions + num_satellites, d_pos_y, size, cudaMemcpyDeviceToHost);
-        cudaMemcpy(positions + 2*num_satellites, d_pos_z, size, cudaMemcpyDeviceToHost);
+        // 将结果从设备内存复制回主机内存。
+        double* x = positions;
+        double* y = positions + num_satellites;
+        double* z = positions + 2 * num_satellites;
         
-        // 释放设备上分配的所有内存。
-        cudaFree(d_a); cudaFree(d_e); cudaFree(d_i);
-        cudaFree(d_O); cudaFree(d_w); cudaFree(d_M);
-        cudaFree(d_pos_x); cudaFree(d_pos_y); cudaFree(d_pos_z);
+        cudaMemcpy(x, d_x, size, cudaMemcpyDeviceToHost);
+        cudaMemcpy(y, d_y, size, cudaMemcpyDeviceToHost);
+        cudaMemcpy(z, d_z, size, cudaMemcpyDeviceToHost);
+        
+        // 释放设备内存。
+        cudaFree(d_a);
+        cudaFree(d_e);
+        cudaFree(d_i);
+        cudaFree(d_O);
+        cudaFree(d_w);
+        cudaFree(d_M);
+        cudaFree(d_x);
+        cudaFree(d_y);
+        cudaFree(d_z);
     }
 }
-
 #endif // __CUDACC__
