@@ -38,7 +38,7 @@
 #endif
 #include <cmath>
 #include <iostream>
-#include "math_constants.h"
+#include <cstddef>
 
 // 当没有CUDA时，提供空的实现，以确保代码可以链接和编译。
 #ifndef __CUDACC__
@@ -84,9 +84,10 @@ __constant__ double d_J2 = 1.08263e-3;     ///< 地球J2摄动系数
  * @return 归一化后的角度（弧度）。
  */
 __device__ double normalize_angle_cuda(double angle) {
-    angle = fmod(angle, 2.0 * CUDART_PI );
+    const double TWO_PI = 6.28318530717958647692528676655900576;
+    angle = fmod(angle, TWO_PI);
     if (angle < 0) {
-        angle += 2.0 *CUDART_PI;
+        angle += TWO_PI;
     }
     return angle;
 }

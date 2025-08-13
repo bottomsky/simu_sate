@@ -8,7 +8,7 @@
 
 #include "j2_orbit_propagator_c.h"
 #include "j2_orbit_propagator.h"
-#include "math_constants.h"
+#include "math_defs.h"
 #include <cstring>
 #include <stdexcept>
 

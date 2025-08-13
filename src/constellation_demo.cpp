@@ -1,5 +1,5 @@
 #include "constellation_propagator.h"
-#include "math_constants.h"
+#include "math_defs.h"
 #include <chrono>
 #include <iomanip>
 #include <random>

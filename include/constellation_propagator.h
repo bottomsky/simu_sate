@@ -7,7 +7,7 @@
 #include <immintrin.h>  // SIMD intrinsics
 #include <cmath>
 #include <iostream>
-#include "math_constants.h"
+#include "math_defs.h"
 #include "common_types.h"
 
 #ifdef __CUDACC__

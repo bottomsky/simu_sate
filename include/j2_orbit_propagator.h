@@ -4,7 +4,7 @@
 #include <Eigen/Dense>
 #include <cmath>
 #include <iostream>
-#include "math_constants.h"
+#include "math_defs.h"
 #include "common_types.h"
 
 // 轨道要素结构体
