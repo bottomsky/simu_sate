@@ -5,6 +5,17 @@ find_package(CUDAToolkit QUIET)
 if(CUDAToolkit_FOUND)
     project(J2OrbitPropagator VERSION 1.0.0 LANGUAGES CXX CUDA)
     message(STATUS "CUDA Toolkit found, enabling CUDA language")
+    
+    # 设置CUDA架构
+    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        # 默认支持主流现代GPU架构
+        # sm_75: RTX 20系列, Tesla T4, Quadro RTX 4000-8000
+        # sm_86: RTX 30系列, A100, A40
+        # sm_89: RTX 40系列 (Ada Lovelace)
+        # sm_90: H100 (Hopper)
+        set(CMAKE_CUDA_ARCHITECTURES "75;86;89;90")
+        message(STATUS "CUDA architectures set to: ${CMAKE_CUDA_ARCHITECTURES}")
+    endif()
 else()
     project(J2OrbitPropagator VERSION 1.0.0 LANGUAGES CXX)
     message(STATUS "CUDA Toolkit not found")

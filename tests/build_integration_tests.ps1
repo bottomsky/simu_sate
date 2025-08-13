@@ -22,7 +22,13 @@
   [switch]$Unit,
 
   [Alias('it')]
-  [switch]$Integration
+  [switch]$Integration,
+
+  [Alias('p')]
+  [switch]$Performance,
+
+  [Alias('all')]
+  [switch]$AllTests
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,6 +39,8 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # 如果指定了便捷开关，覆盖 Target
 if ($Unit.IsPresent) { $Target = "unit_tests" }
 elseif ($Integration.IsPresent) { $Target = "integration_tests" }
+elseif ($Performance.IsPresent) { $Target = "performance_tests" }
+elseif ($AllTests.IsPresent) { $Target = "all" }
 
 # 根据 Target 推断默认构建目录
 if (-not $BuildDir -or $BuildDir -eq "") {
@@ -41,6 +49,12 @@ if (-not $BuildDir -or $BuildDir -eq "") {
   }
   elseif ($Target -match '^integration') {
     $BuildDir = Join-Path $scriptDir "build-integration"
+  }
+  elseif ($Target -match '^performance') {
+    $BuildDir = Join-Path $scriptDir "build-performance"
+  }
+  elseif ($Target -eq "all") {
+    $BuildDir = Join-Path $scriptDir "build-all"
   }
   else {
     $BuildDir = Join-Path $scriptDir "build"

@@ -15,7 +15,11 @@ if(NOT GTest_FOUND)
     include(FetchContent)
     FetchContent_Declare(
         googletest
-        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+        # 使用Gitee镜像以提高下载速度和稳定性
+        URL https://gitee.com/mirrors/googletest/repository/archive/v1.14.0.zip
+        # 备用GitHub源
+        # URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+        TIMEOUT 30
     )
     # 禁止gtest强制覆盖父工程编译选项
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
