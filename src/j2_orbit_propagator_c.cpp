@@ -148,6 +148,23 @@ int j2_propagator_state_to_elements(J2PropagatorHandle handle, const CStateVecto
     }
 }
 
+int j2_propagator_apply_impulse(J2PropagatorHandle handle, const COrbitalElements* elements, const double delta_v[3], double t, COrbitalElements* result) {
+    J2OrbitPropagator* propagator = validate_handle(handle);
+    if (propagator == nullptr || elements == nullptr || delta_v == nullptr || result == nullptr) {
+        return -1;
+    }
+
+    try {
+        OrbitalElements cpp_elements = c_to_cpp_elements(elements);
+        Eigen::Vector3d dv(delta_v[0], delta_v[1], delta_v[2]);
+        OrbitalElements updated = propagator->applyImpulse(cpp_elements, dv, t);
+        cpp_to_c_elements(updated, result);
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
 // === 参数设置函数 ===
 
 int j2_propagator_set_step_size(J2PropagatorHandle handle, double step_size) {
@@ -282,8 +299,6 @@ int j2_ecef_to_eci_velocity(const double ecef_position[3], const double ecef_vel
     }
 }
 
-// === 工具函数 ===
-
 int j2_compute_gmst(double utc_seconds, double* gmst) {
     if (gmst == nullptr) {
         return -1;
@@ -298,7 +313,11 @@ int j2_compute_gmst(double utc_seconds, double* gmst) {
 }
 
 double j2_normalize_angle(double angle) {
-    return normalizeAngle(angle);
+    try {
+        return normalizeAngle(angle);
+    } catch (const std::exception&) {
+        return angle; // 发生异常时返回输入角度
+    }
 }
 
 } // extern "C"

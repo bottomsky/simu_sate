@@ -1,4 +1,5 @@
 #include "constellation_propagator.h"
+#include "j2_orbit_propagator.h"  // 用于CUDA路径中的状态->要素转换
 #include <algorithm>
 #include <cstring>
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
@@ -444,6 +445,105 @@ StateVector ConstellationPropagator::elementsToState(const CompactOrbitalElement
     return state;
 }
 
+CompactOrbitalElements ConstellationPropagator::applyImpulseScalar(const CompactOrbitalElements& elements,
+                                                                  const Eigen::Vector3d& delta_v, double t) const {
+    // 将要素转为状态
+    StateVector s = elementsToState(elements);
+    // 施加ΔV
+    StateVector s_new;
+    s_new.r = s.r;
+    s_new.v = s.v + delta_v;
+    
+    // 将状态转回要素（复用J2OrbitPropagator实现更稳妥，但此处按星座类已有流程实现）
+    // 这里我们临时构建一个J2OrbitPropagator来复用其stateToElements逻辑
+    OrbitalElements oe_full; oe_full.a = elements.a; oe_full.e = elements.e; oe_full.i = elements.i;
+    oe_full.O = elements.O; oe_full.w = elements.w; oe_full.M = elements.M; oe_full.t = t;
+    J2OrbitPropagator propagator(oe_full);
+    OrbitalElements new_full = propagator.stateToElements(s_new, t);
+    
+    CompactOrbitalElements out;
+    out.a = new_full.a; out.e = new_full.e; out.i = new_full.i;
+    out.O = new_full.O; out.w = new_full.w; out.M = new_full.M;
+    return out;
+}
+
+void ConstellationPropagator::applyImpulseToConstellation(const std::vector<Eigen::Vector3d>& delta_vs, double t) {
+    size_t n = elements_.size();
+    if (delta_vs.size() != n) {
+        throw std::invalid_argument("delta_vs size must match satellite count");
+    }
+
+    switch (compute_mode_) {
+        case CPU_SCALAR: {
+            for (size_t idx = 0; idx < n; ++idx) {
+                CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx],
+                                            elements_.O[idx], elements_.w[idx], elements_.M[idx]};
+                CompactOrbitalElements updated = applyImpulseScalar(elem, delta_vs[idx], t);
+                elements_.a[idx] = updated.a;
+                elements_.e[idx] = updated.e;
+                elements_.i[idx] = updated.i;
+                elements_.O[idx] = updated.O;
+                elements_.w[idx] = updated.w;
+                elements_.M[idx] = updated.M;
+            }
+            break;
+        }
+        case CPU_SIMD: {
+            applyImpulseSIMD(delta_vs, t);
+            break;
+        }
+        case GPU_CUDA: {
+            if (!isCudaAvailable()) {
+                std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
+                applyImpulseSIMD(delta_vs, t);
+                break;
+            }
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
+            // 构建SoA的r、v、dv数组
+            std::vector<double> rxyz(3 * n), vxyz(3 * n), dvxyz(3 * n);
+            for (size_t idx = 0; idx < n; ++idx) {
+                CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx],
+                                            elements_.O[idx], elements_.w[idx], elements_.M[idx]};
+                StateVector state = elementsToState(elem);
+                rxyz[idx] = state.r.x();
+                rxyz[idx + n] = state.r.y();
+                rxyz[idx + 2 * n] = state.r.z();
+                vxyz[idx] = state.v.x();
+                vxyz[idx + n] = state.v.y();
+                vxyz[idx + 2 * n] = state.v.z();
+                dvxyz[idx] = delta_vs[idx].x();
+                dvxyz[idx + n] = delta_vs[idx].y();
+                dvxyz[idx + 2 * n] = delta_vs[idx].z();
+            }
+            
+            // 调用CUDA接口施加脉冲（更新vxyz）
+            cuda_apply_impulse(rxyz.data(), vxyz.data(), dvxyz.data(), n);
+            
+            // 将新的状态向量（r不变，v已更新）转换回轨道要素并写回
+            for (size_t idx = 0; idx < n; ++idx) {
+                StateVector new_state;
+                new_state.r = Eigen::Vector3d(rxyz[idx], rxyz[idx + n], rxyz[idx + 2 * n]);
+                new_state.v = Eigen::Vector3d(vxyz[idx], vxyz[idx + n], vxyz[idx + 2 * n]);
+                // 复用单星J2转换逻辑
+                J2OrbitPropagator temp(OrbitalElements{elements_.a[idx], elements_.e[idx], elements_.i[idx],
+                                                       elements_.O[idx], elements_.w[idx], elements_.M[idx], t});
+                OrbitalElements updated_full = temp.stateToElements(new_state, t);
+                elements_.a[idx] = updated_full.a;
+                elements_.e[idx] = updated_full.e;
+                elements_.i[idx] = updated_full.i;
+                elements_.O[idx] = updated_full.O;
+                elements_.w[idx] = updated_full.w;
+                elements_.M[idx] = updated_full.M;
+            }
+#else
+            // 理论上不会到这里，但为了安全，回退
+            applyImpulseSIMD(delta_vs, t);
+#endif
+            break;
+        }
+    }
+}
+
 Eigen::MatrixXd ConstellationPropagator::getAllPositions() const {
     size_t n = elements_.size();
     Eigen::MatrixXd positions(3, n);
@@ -620,4 +720,23 @@ double ConstellationPropagator::estimateLocalErrorScalar(const CompactOrbitalEle
 double ConstellationPropagator::estimateLocalErrorSIMD(size_t idx, double dt) {
     CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx], elements_.O[idx], elements_.w[idx], elements_.M[idx]};
     return estimateLocalErrorScalar(elem, dt);
+}
+void ConstellationPropagator::applyImpulseSIMD(const std::vector<Eigen::Vector3d>& delta_vs, double t) {
+    size_t n = elements_.size();
+    if (delta_vs.size() != n) {
+        throw std::invalid_argument("delta_vs size must match satellite count");
+    }
+
+    // 占位SIMD实现：先逐颗调用标量版本，后续可替换为AVX2批处理
+    for (size_t idx = 0; idx < n; ++idx) {
+        CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx],
+                                    elements_.O[idx], elements_.w[idx], elements_.M[idx]};
+        CompactOrbitalElements updated = applyImpulseScalar(elem, delta_vs[idx], t);
+        elements_.a[idx] = updated.a;
+        elements_.e[idx] = updated.e;
+        elements_.i[idx] = updated.i;
+        elements_.O[idx] = updated.O;
+        elements_.w[idx] = updated.w;
+        elements_.M[idx] = updated.M;
+    }
 }

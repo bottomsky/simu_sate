@@ -70,6 +70,17 @@ int j2_propagator_elements_to_state(J2PropagatorHandle handle, const COrbitalEle
  */
 int j2_propagator_state_to_elements(J2PropagatorHandle handle, const CStateVector* state, double time, COrbitalElements* elements);
 
+/**
+ * @brief 在ECI系施加速度增量(脉冲)，返回更新后的轨道要素
+ * @param handle 传播器句柄
+ * @param elements 施加脉冲前的轨道要素
+ * @param delta_v 速度增量向量 (m/s) [dvx, dvy, dvz]
+ * @param t 脉冲施加时刻（新要素的历元，单位s）
+ * @param result 输出的更新后轨道要素
+ * @return 0表示成功，非0表示失败
+ */
+int j2_propagator_apply_impulse(J2PropagatorHandle handle, const COrbitalElements* elements, const double delta_v[3], double t, COrbitalElements* result);
+
 // === 参数设置函数 ===
 
 /**

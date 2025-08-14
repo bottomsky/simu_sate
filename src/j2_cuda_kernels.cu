@@ -90,6 +90,12 @@ void cuda_compute_positions_persistent(double* d_a, double* d_e, double* d_i,
                                       size_t num_satellites, void* stream) {
     std::cerr << "Warning: CUDA not available. Please use CPU_SCALAR or CPU_SIMD mode." << std::endl;
 }
+
+// ECI 下施加脉冲：r 保持不变，v += dv，输入输出均采用SoA布局
+// rxyz: [rx.., ry.., rz..], vxyz: [vx.., vy.., vz..], dvxyz: [dvx.., dvy.., dvz..]
+void cuda_apply_impulse(const double* rxyz, double* vxyz, const double* dvxyz, size_t num_satellites) {
+    std::cerr << "Warning: CUDA not available. Please use CPU_SCALAR or CPU_SIMD mode." << std::endl;
+}
 }
 #else
 
@@ -419,6 +425,96 @@ extern "C" {
         int blocksPerGrid = (static_cast<int>(num_satellites) + threadsPerBlock - 1) / threadsPerBlock;
         compute_positions_kernel<<<blocksPerGrid, threadsPerBlock, 0, stream>>>(
             d_a, d_e, d_i, d_O, d_w, d_M, d_x, d_y, d_z, static_cast<int>(num_satellites));
+    }
+    
+    /**
+     * @brief ECI下施加脉冲的CUDA内核
+     * 
+     * 该内核为每个卫星启动一个线程，并行地在地心惯性系(ECI)中施加速度增量(Delta-V)。
+     * 
+     * @param vx_arr 指向速度x分量数组的设备指针（输入/输出）
+     * @param vy_arr 指向速度y分量数组的设备指针（输入/输出）  
+     * @param vz_arr 指向速度z分量数组的设备指针（输入/输出）
+     * @param dvx_arr 指向Delta-V x分量数组的设备指针
+     * @param dvy_arr 指向Delta-V y分量数组的设备指针
+     * @param dvz_arr 指向Delta-V z分量数组的设备指针
+     * @param num_satellites 卫星总数
+     */
+    __global__ void apply_impulse_kernel(double* vx_arr, double* vy_arr, double* vz_arr,
+                                        const double* dvx_arr, const double* dvy_arr, const double* dvz_arr,
+                                        int num_satellites) {
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        
+        if (idx < num_satellites) {
+            // 施加脉冲：位置保持不变，速度直接加上Delta-V
+            vx_arr[idx] += dvx_arr[idx];
+            vy_arr[idx] += dvy_arr[idx];
+            vz_arr[idx] += dvz_arr[idx];
+        }
+    }
+    
+    /**
+     * @brief ECI下施加脉冲的CUDA接口函数
+     * 
+     * 该函数接收SoA布局的位置、速度和Delta-V数据，在GPU上并行施加脉冲。
+     * 位置保持不变，仅更新速度：v_new = v_old + delta_v
+     * 
+     * @param rxyz 指向位置数据的指针（SoA布局：[rx..., ry..., rz...]）
+     * @param vxyz 指向速度数据的指针（SoA布局：[vx..., vy..., vz...]）- 输入/输出
+     * @param dvxyz 指向Delta-V数据的指针（SoA布局：[dvx..., dvy..., dvz...]）
+     * @param num_satellites 卫星数量
+     */
+    void cuda_apply_impulse(const double* rxyz, double* vxyz, const double* dvxyz, size_t num_satellites) {
+        // 分配GPU内存
+        double *d_vx, *d_vy, *d_vz;
+        double *d_dvx, *d_dvy, *d_dvz;
+        size_t size = num_satellites * sizeof(double);
+        
+        cudaMalloc(&d_vx, size);
+        cudaMalloc(&d_vy, size);
+        cudaMalloc(&d_vz, size);
+        cudaMalloc(&d_dvx, size);
+        cudaMalloc(&d_dvy, size);
+        cudaMalloc(&d_dvz, size);
+        
+        // 从主机复制速度和Delta-V数据到设备
+        const double* vx = vxyz;
+        const double* vy = vxyz + num_satellites;
+        const double* vz = vxyz + 2 * num_satellites;
+        const double* dvx = dvxyz;
+        const double* dvy = dvxyz + num_satellites;
+        const double* dvz = dvxyz + 2 * num_satellites;
+        
+        cudaMemcpy(d_vx, vx, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_vy, vy, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_vz, vz, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_dvx, dvx, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_dvy, dvy, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_dvz, dvz, size, cudaMemcpyHostToDevice);
+        
+        // 启动内核
+        int threadsPerBlock = 256;
+        int blocksPerGrid = (static_cast<int>(num_satellites) + threadsPerBlock - 1) / threadsPerBlock;
+        apply_impulse_kernel<<<blocksPerGrid, threadsPerBlock>>>(
+            d_vx, d_vy, d_vz, d_dvx, d_dvy, d_dvz, static_cast<int>(num_satellites));
+        cudaDeviceSynchronize();
+        
+        // 复制更新后的速度数据回主机
+        double* vx_out = vxyz;
+        double* vy_out = vxyz + num_satellites;
+        double* vz_out = vxyz + 2 * num_satellites;
+        
+        cudaMemcpy(vx_out, d_vx, size, cudaMemcpyDeviceToHost);
+        cudaMemcpy(vy_out, d_vy, size, cudaMemcpyDeviceToHost);
+        cudaMemcpy(vz_out, d_vz, size, cudaMemcpyDeviceToHost);
+        
+        // 释放设备内存
+        cudaFree(d_vx);
+        cudaFree(d_vy);
+        cudaFree(d_vz);
+        cudaFree(d_dvx);
+        cudaFree(d_dvy);
+        cudaFree(d_dvz);
     }
 }
 #endif // HAVE_CUDA_TOOLKIT

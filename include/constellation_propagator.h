@@ -71,6 +71,9 @@ public:
     // 获取所有卫星的位置矢量 (3 x N矩阵)
     Eigen::MatrixXd getAllPositions() const;
     
+    // 对整个星座施加脉冲：根据计算模式自动选择标量/SIMD/CUDA实现
+    void applyImpulseToConstellation(const std::vector<Eigen::Vector3d>& delta_vs, double t);
+    
     // 设置积分步长
     void setStepSize(double step) { step_size_ = step; }
     
@@ -133,6 +136,12 @@ private:
     // 单个卫星状态计算
     StateVector elementsToState(const CompactOrbitalElements& elements) const;
     
+    // 施加脉冲：对单个或批量卫星在ECI下添加ΔV，并返回更新后的轨道要素
+    CompactOrbitalElements applyImpulseScalar(const CompactOrbitalElements& elements,
+                                             const Eigen::Vector3d& delta_v, double t) const;
+    
+    void applyImpulseSIMD(const std::vector<Eigen::Vector3d>& delta_vs, double t);
+    
     // 辅助函数
     double computeEccentricAnomaly(double M, double e) const;
     double computeTrueAnomaly(double E, double e) const;
@@ -164,6 +173,9 @@ private:
 extern "C" {
     void cuda_propagate_j2(double* elements, size_t num_satellites, double dt, double mu, double re, double j2);
     void cuda_compute_positions(double* elements, double* positions, size_t num_satellites);
+    
+    // GPU 端施加脉冲：输入SoA元素与ΔV（SoA：vx,vy,vz）
+    void cuda_apply_impulse(const double* rxyz, double* vxyz, const double* dvxyz, size_t num_satellites);
     
     // 优化的持久化缓冲区接口
     void cuda_propagate_j2_persistent(double* d_a, double* d_e, double* d_i,

@@ -35,6 +35,10 @@ public:
     // 从位置速度计算轨道要素
     OrbitalElements stateToElements(const StateVector& state, double t);
     
+    // 施加脉冲（标量版本）
+    OrbitalElements applyImpulse(const OrbitalElements& elements, 
+                                 const Eigen::Vector3d& delta_v, double t);
+    
     // 设置积分步长
     void setStepSize(double step) { step_size_ = step; }
     

@@ -442,3 +442,30 @@ OrbitalElements J2OrbitPropagator::stateToElements(const StateVector& state, dou
     
     return elements;
 }
+
+/**
+ * @brief 在ECI坐标系下施加脉冲，计算更新后的轨道根数。
+ * 
+ * 该函数实现了在地心惯性系（ECI）下对卫星施加速度增量（脉冲），
+ * 并通过状态向量转换计算新的轨道根数，包括正确的平近点角。
+ *
+ * @param elements 施加脉冲前的轨道根数
+ * @param delta_v ECI坐标系下的速度增量向量 (m/s)
+ * @param t 施加脉冲的时刻（用作新轨道的历元）
+ * @return 施加脉冲后的新轨道根数
+ */
+OrbitalElements J2OrbitPropagator::applyImpulse(const OrbitalElements& elements, 
+                                               const Eigen::Vector3d& delta_v, double t) {
+    // 步骤1：将轨道根数转换为ECI状态向量
+    StateVector current_state = elementsToState(elements);
+    
+    // 步骤2：施加脉冲（在ECI下只影响速度）
+    StateVector new_state;
+    new_state.r = current_state.r;  // 位置保持不变
+    new_state.v = current_state.v + delta_v;  // 速度增加ΔV
+    
+    // 步骤3：将新的状态向量转换回轨道根数
+    OrbitalElements new_elements = stateToElements(new_state, t);
+    
+    return new_elements;
+}
