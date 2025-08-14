@@ -1,13 +1,30 @@
 #include <gtest/gtest.h>
 #include <cmath>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <vector>
+#include <algorithm>
+#include <numeric>
+#include <iostream>
 #include "constellation_propagator.h"
+
+// 统计结果结构
+struct ComparisonStats {
+    double max_pos_diff;
+    double mean_pos_diff;
+    double max_vel_diff;
+    double mean_vel_diff;
+    std::vector<double> pos_diffs;
+    std::vector<double> vel_diffs;
+};
 
 // 用于三种计算模式（CPU_SCALAR / CPU_SIMD / GPU_CUDA）的数值一致性回归测试
 class ModeConsistencyRegressionTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // 使用与已通过测试一致的GEO近似轨道参数，避免LEO下近似引入的差异放大
-        base_.a = 42164.169; // km（地球同步轨道半长轴）
+        base_.a = 42164.169e3; // m（地球同步轨道半长轴）
         base_.e = 0.001;
         base_.i = 1.0 * M_PI / 180.0; // 1度
         base_.O = 0.0;
@@ -44,6 +61,129 @@ protected:
     static double posDiff(const StateVector& a, const StateVector& b) { return (a.r - b.r).norm(); }
     static double velDiff(const StateVector& a, const StateVector& b) { return (a.v - b.v).norm(); }
 
+    // 计算比较统计
+    ComparisonStats computeStats(const std::vector<StateVector>& states1, 
+                                const std::vector<StateVector>& states2) {
+        ComparisonStats stats;
+        stats.pos_diffs.reserve(states1.size());
+        stats.vel_diffs.reserve(states1.size());
+        
+        for (size_t i = 0; i < states1.size(); ++i) {
+            double pos_diff = posDiff(states1[i], states2[i]);
+            double vel_diff = velDiff(states1[i], states2[i]);
+            stats.pos_diffs.push_back(pos_diff);
+            stats.vel_diffs.push_back(vel_diff);
+        }
+        
+        stats.max_pos_diff = *std::max_element(stats.pos_diffs.begin(), stats.pos_diffs.end());
+        stats.mean_pos_diff = std::accumulate(stats.pos_diffs.begin(), stats.pos_diffs.end(), 0.0) / stats.pos_diffs.size();
+        stats.max_vel_diff = *std::max_element(stats.vel_diffs.begin(), stats.vel_diffs.end());
+        stats.mean_vel_diff = std::accumulate(stats.vel_diffs.begin(), stats.vel_diffs.end(), 0.0) / stats.vel_diffs.size();
+        
+        return stats;
+    }
+
+    // 生成JSON报告
+    void generateJsonReport(const std::string& test_name,
+                           const std::vector<CompactOrbitalElements>& sats,
+                           double step, double target_time,
+                           const ComparisonStats& scalar_vs_simd,
+                           const ComparisonStats& scalar_vs_cuda,
+                           bool has_cuda) {
+        std::stringstream json;
+        json << std::fixed << std::setprecision(6);
+        json << "{\n";
+        json << "  \"test_name\": \"" << test_name << "\",\n";
+        json << "  \"parameters\": {\n";
+        json << "    \"satellite_count\": " << sats.size() << ",\n";
+        json << "    \"step_size_seconds\": " << step << ",\n";
+        json << "    \"propagation_time_seconds\": " << target_time << ",\n";
+        json << "    \"cuda_available\": " << (has_cuda ? "true" : "false") << "\n";
+        json << "  },\n";
+        json << "  \"comparisons\": {\n";
+        json << "    \"scalar_vs_simd\": {\n";
+        json << "      \"position_difference_km\": {\n";
+        json << "        \"max\": " << scalar_vs_simd.max_pos_diff << ",\n";
+        json << "        \"mean\": " << scalar_vs_simd.mean_pos_diff << "\n";
+        json << "      },\n";
+        json << "      \"velocity_difference_km_per_s\": {\n";
+        json << "        \"max\": " << scalar_vs_simd.max_vel_diff << ",\n";
+        json << "        \"mean\": " << scalar_vs_simd.mean_vel_diff << "\n";
+        json << "      }\n";
+        json << "    }";
+        
+        if (has_cuda) {
+            json << ",\n";
+            json << "    \"scalar_vs_cuda\": {\n";
+            json << "      \"position_difference_km\": {\n";
+            json << "        \"max\": " << scalar_vs_cuda.max_pos_diff << ",\n";
+            json << "        \"mean\": " << scalar_vs_cuda.mean_pos_diff << "\n";
+            json << "      },\n";
+            json << "      \"velocity_difference_km_per_s\": {\n";
+            json << "        \"max\": " << scalar_vs_cuda.max_vel_diff << ",\n";
+            json << "        \"mean\": " << scalar_vs_cuda.mean_vel_diff << "\n";
+            json << "      }\n";
+            json << "    }\n";
+        } else {
+            json << "\n";
+        }
+        
+        json << "  },\n";
+        json << "  \"algorithms_compared\": [\n";
+        json << "    \"CPU_SCALAR (基准标量算法)\",\n";
+        json << "    \"CPU_SIMD (SIMD向量化算法)\"";
+        if (has_cuda) {
+            json << ",\n    \"GPU_CUDA (CUDA并行计算算法)\"";
+        }
+        json << "\n  ]\n";
+        json << "}\n";
+
+        // 保存到文件
+        std::string filename = "d:\\code\\j2-perturbation-orbit-propagator\\tests\\data\\" + test_name + "_consistency_report.json";
+        std::ofstream file(filename);
+        file << json.str();
+        file.close();
+    }
+
+    // 打印详细报告
+    void printDetailedReport(const std::string& test_name,
+                            const std::vector<CompactOrbitalElements>& sats,
+                            double step, double target_time,
+                            const ComparisonStats& scalar_vs_simd,
+                            const ComparisonStats& scalar_vs_cuda,
+                            bool has_cuda) {
+        std::cout << "\n========== " << test_name << " 一致性检测报告 ==========\n";
+        std::cout << "测试参数：\n";
+        std::cout << "  卫星数量: " << sats.size() << " 颗\n";
+        std::cout << "  步长: " << step << " 秒\n";
+        std::cout << "  传播时间: " << target_time << " 秒 (" << target_time/3600.0 << " 小时)\n";
+        std::cout << "  CUDA可用性: " << (has_cuda ? "是" : "否") << "\n\n";
+
+        std::cout << "算法对比结果：\n";
+        std::cout << "1. CPU_SCALAR vs CPU_SIMD:\n";
+        std::cout << "   位置差异 (km): 最大=" << std::fixed << std::setprecision(6) << scalar_vs_simd.max_pos_diff 
+                  << ", 平均=" << scalar_vs_simd.mean_pos_diff << "\n";
+        std::cout << "   速度差异 (km/s): 最大=" << scalar_vs_simd.max_vel_diff 
+                  << ", 平均=" << scalar_vs_simd.mean_vel_diff << "\n\n";
+
+        if (has_cuda) {
+            std::cout << "2. CPU_SCALAR vs GPU_CUDA:\n";
+            std::cout << "   位置差异 (km): 最大=" << scalar_vs_cuda.max_pos_diff 
+                      << ", 平均=" << scalar_vs_cuda.mean_pos_diff << "\n";
+            std::cout << "   速度差异 (km/s): 最大=" << scalar_vs_cuda.max_vel_diff 
+                      << ", 平均=" << scalar_vs_cuda.mean_vel_diff << "\n\n";
+        }
+
+        std::cout << "算法说明：\n";
+        std::cout << "- CPU_SCALAR: 基准标量算法，逐颗卫星串行计算\n";
+        std::cout << "- CPU_SIMD: SIMD向量化算法，利用CPU向量指令并行计算\n";
+        if (has_cuda) {
+            std::cout << "- GPU_CUDA: CUDA并行计算算法，利用GPU大规模并行处理\n";
+        }
+        std::cout << "\n通过标准: 位置差异 < 1.0 km, 速度差异 < 0.001 km/s\n";
+        std::cout << "======================================================\n\n";
+    }
+
     CompactOrbitalElements base_;
 };
 
@@ -61,6 +201,19 @@ TEST_F(ModeConsistencyRegressionTest, SmallConstellation_Step60s_OneHour) {
     if (has_cuda) {
         states_cuda = propagateInMode(sats, ConstellationPropagator::GPU_CUDA, step, t);
     }
+
+    // 计算统计数据
+    ComparisonStats scalar_vs_simd = computeStats(states_scalar, states_simd);
+    ComparisonStats scalar_vs_cuda;
+    if (has_cuda) {
+        scalar_vs_cuda = computeStats(states_scalar, states_cuda);
+    }
+
+    // 生成报告
+    generateJsonReport("SmallConstellation_Step60s_OneHour", sats, step, t, 
+                      scalar_vs_simd, scalar_vs_cuda, has_cuda);
+    printDetailedReport("SmallConstellation_Step60s_OneHour", sats, step, t, 
+                       scalar_vs_simd, scalar_vs_cuda, has_cuda);
 
     // 逐星比较 SCALAR vs SIMD
     for (size_t i = 0; i < N; ++i) {
@@ -92,6 +245,19 @@ TEST_F(ModeConsistencyRegressionTest, MediumConstellation_Step30s_TwoHours_Adapt
     std::vector<StateVector> states_cuda;
     bool has_cuda = ConstellationPropagator::isCudaAvailable();
     if (has_cuda) states_cuda = propagateInMode(sats, ConstellationPropagator::GPU_CUDA, step, t);
+
+    // 计算统计数据
+    ComparisonStats scalar_vs_simd = computeStats(states_scalar, states_simd);
+    ComparisonStats scalar_vs_cuda;
+    if (has_cuda) {
+        scalar_vs_cuda = computeStats(states_scalar, states_cuda);
+    }
+
+    // 生成报告
+    generateJsonReport("MediumConstellation_Step30s_TwoHours", sats, step, t, 
+                      scalar_vs_simd, scalar_vs_cuda, has_cuda);
+    printDetailedReport("MediumConstellation_Step30s_TwoHours", sats, step, t, 
+                       scalar_vs_simd, scalar_vs_cuda, has_cuda);
 
     for (size_t i = 0; i < N; ++i) {
         double p = posDiff(states_scalar[i], states_simd[i]);
@@ -141,6 +307,14 @@ TEST_F(ModeConsistencyRegressionTest, AdaptiveStep_ScalarVsSIMD) {
         states_simd.reserve(N);
         for (size_t i = 0; i < N; ++i) states_simd.push_back(prop.getSatelliteState(i));
     }
+
+    // 计算统计数据和生成报告（不包括CUDA）
+    ComparisonStats scalar_vs_simd = computeStats(states_scalar, states_simd);
+    ComparisonStats empty_cuda_stats;
+    generateJsonReport("AdaptiveStep_ScalarVsSIMD", sats, -1.0, t, 
+                      scalar_vs_simd, empty_cuda_stats, false);
+    printDetailedReport("AdaptiveStep_ScalarVsSIMD", sats, -1.0, t, 
+                       scalar_vs_simd, empty_cuda_stats, false);
 
     for (size_t i = 0; i < N; ++i) {
         double p = posDiff(states_scalar[i], states_simd[i]);

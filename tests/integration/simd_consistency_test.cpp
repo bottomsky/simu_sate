@@ -5,7 +5,7 @@ class SIMDConsistencyTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // 地球同步轨道参数
-        elements_.a = 42164.169; // km
+        elements_.a = 42164.169e3; // m (转换为米)
         elements_.e = 0.001;
         elements_.i = 0.017453; // 1度转弧度
         elements_.O = 0.0;
