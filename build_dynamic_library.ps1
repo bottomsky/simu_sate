@@ -1,12 +1,34 @@
 ﻿# J2轨道传播器动态库构建脚本
 # 该脚本用于在Windows平台上构建J2轨道传播器的动态库
 
+<#!
+.SYNOPSIS
+ 构建 J2 轨道传播器的动态库与测试。
+.DESCRIPTION
+ 使用 CMake 在 Windows 平台生成并构建项目，支持可选清理与安装步骤。
+ 支持为 CMake 指定构建类型与生成器，并可将构建产物安装到指定前缀目录。
+.PARAMETER BuildType
+ 构建类型（别名: -t, -config）。可选: Debug, Release, RelWithDebInfo, MinSizeRel。默认: Release。
+.PARAMETER Generator
+ CMake 生成器（别名: -g）。默认: "Visual Studio 17 2022"。
+.PARAMETER Clean
+ 在配置/构建前清理构建目录（别名: -c）。
+.PARAMETER Install
+ 构建后执行安装（别名: -i）。
+.PARAMETER InstallPrefix
+ 安装前缀目录（别名: -p, -prefix）。默认: $PWD\install。
+.EXAMPLE
+ ./build_dynamic_library.ps1 -t Release -g "Visual Studio 17 2022" -c -i -p .\install
+.EXAMPLE
+ ./build_dynamic_library.ps1 -config Debug -i
+#>
+
 param(
-    [string]$BuildType = "Release",
-    [string]$Generator = "Visual Studio 17 2022",
-    [switch]$Clean,
-    [switch]$Install,
-    [string]$InstallPrefix = "$PWD\install"
+    [Alias('t','config')][ValidateSet('Debug','Release','RelWithDebInfo','MinSizeRel')][string]$BuildType = "Release",
+    [Alias('g')][string]$Generator = "Visual Studio 17 2022",
+    [Alias('c')][switch]$Clean,
+    [Alias('i')][switch]$Install,
+    [Alias('p','prefix')][string]$InstallPrefix = "$PWD\install"
 )
 
 # 设置错误处理
