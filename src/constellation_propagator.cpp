@@ -1,14 +1,14 @@
 #include "constellation_propagator.h"
 #include <algorithm>
 #include <cstring>
-#if defined(HAVE_CUDA_TOOLKIT)
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
 #include <cuda_runtime_api.h>
 #endif
 
 ConstellationPropagator::ConstellationPropagator(double epoch_time)
     : epoch_time_(epoch_time), current_time_(epoch_time), step_size_(60.0), 
       compute_mode_(CPU_SIMD) {
-#if defined(HAVE_CUDA_TOOLKIT)
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     d_a_ = d_e_ = d_i_ = d_O_ = d_w_ = d_M_ = nullptr;
     d_x_ = d_y_ = d_z_ = nullptr;
     gpu_buffer_size_ = 0;
@@ -17,7 +17,7 @@ ConstellationPropagator::ConstellationPropagator(double epoch_time)
 }
 
 ConstellationPropagator::~ConstellationPropagator() {
-#if defined(HAVE_CUDA_TOOLKIT)
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     cleanupCUDA();
 #endif
 }
@@ -481,7 +481,7 @@ double ConstellationPropagator::normalizeAngle(double angle) const {
 }
 
 bool ConstellationPropagator::isCudaAvailable() noexcept {
-#if defined(HAVE_CUDA_TOOLKIT)
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     // 缓存检测结果，避免每帧重复调用带来的开销
     static const bool available = []() noexcept {
         int device_count = 0;
@@ -496,7 +496,7 @@ bool ConstellationPropagator::isCudaAvailable() noexcept {
 }
 
 void ConstellationPropagator::propagateCUDA(double dt) {
-#if defined(HAVE_CUDA_TOOLKIT)
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     size_t n = elements_.size();
     if (n == 0) return;
 
@@ -531,7 +531,7 @@ void ConstellationPropagator::propagateCUDA(double dt) {
 }
 
 void ConstellationPropagator::initializeCUDA() {
-#if defined(HAVE_CUDA_TOOLKIT)
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     size_t n = elements_.size();
     if (n > 0 && gpu_buffer_size_ < n) {
         // 清理旧缓冲区
@@ -558,7 +558,7 @@ void ConstellationPropagator::initializeCUDA() {
 }
 
 void ConstellationPropagator::cleanupCUDA() {
-#if defined(HAVE_CUDA_TOOLKIT)
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     if (gpu_buffer_size_ > 0) {
         cudaFree(d_a_);
         cudaFree(d_e_);

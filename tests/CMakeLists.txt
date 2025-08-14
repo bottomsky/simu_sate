@@ -3,6 +3,33 @@ cmake_minimum_required(VERSION 3.10)
 # 测试总开关
 option(BUILD_TESTING "Build unit/integration/performance tests" ON)
 
+# 新增：允许在 tests 子项目内强制启用/禁用 CUDA
+option(ENABLE_CUDA "Force enable CUDA language for tests" OFF)
+option(DISABLE_CUDA "Force disable CUDA language for tests" OFF)
+
+# 当脚本以 tests 为顶层配置时，这里负责启用/禁用 CUDA 语言
+if(DISABLE_CUDA)
+    message(STATUS "[tests] CUDA explicitly disabled (DISABLE_CUDA=ON)")
+elseif(ENABLE_CUDA)
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        set(CMAKE_CUDA_ARCHITECTURES "75;86;89;90")
+    endif()
+    message(STATUS "[tests] CUDA forced ON (ENABLE_CUDA=ON), arch: ${CMAKE_CUDA_ARCHITECTURES}")
+else()
+    find_package(CUDAToolkit QUIET)
+    if(CUDAToolkit_FOUND)
+        enable_language(CUDA)
+        if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+            set(CMAKE_CUDA_ARCHITECTURES "75;86;89;90")
+        endif()
+        message(STATUS "[tests] CUDA detected and enabled, arch: ${CMAKE_CUDA_ARCHITECTURES}")
+    else()
+        message(STATUS "[tests] CUDA not found - tests will run on CPU only")
+    endif()
+endif()
+
 if(NOT BUILD_TESTING)
     return()
 endif()

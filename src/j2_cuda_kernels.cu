@@ -32,7 +32,7 @@
  * [x_1, x_2, ..., x_N, y_1, y_2, ..., y_N, z_1, ..., z_N]
  */
 
-#ifdef HAVE_CUDA_TOOLKIT
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #endif
@@ -40,7 +40,7 @@
 #include <cstddef>
 
 // 当没有CUDA时，提供空的实现，以确保代码可以链接和编译。
-#ifndef HAVE_CUDA_TOOLKIT
+#if !defined(HAVE_CUDA_TOOLKIT) || !HAVE_CUDA_TOOLKIT
 #include <iostream>
 extern "C" {
 /**

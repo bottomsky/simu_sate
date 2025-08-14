@@ -10,7 +10,7 @@
 #include "math_defs.h"
 #include "common_types.h"
 
-#ifdef HAVE_CUDA_TOOLKIT
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <thrust/device_vector.h>
@@ -142,7 +142,7 @@ private:
     void initializeCUDA();
     void cleanupCUDA();
 
-#ifdef HAVE_CUDA_TOOLKIT
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     // CUDA相关成员（在启用CUDA工具链时可用）
     // 持久化GPU缓冲区（避免每帧重新分配）
     double* d_a_;              // GPU端半长轴数组

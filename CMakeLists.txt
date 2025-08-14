@@ -1,24 +1,32 @@
 cmake_minimum_required(VERSION 3.12)
 
-# 检查CUDA编译器是否可用并启用CUDA语言
-find_package(CUDAToolkit QUIET)
-if(CUDAToolkit_FOUND)
+# 新增：允许通过开关强制启用 CUDA 语言
+option(ENABLE_CUDA "Force enable CUDA language" OFF)
+
+# 检查/启用 CUDA 语言与工具包
+if(ENABLE_CUDA)
     project(J2OrbitPropagator VERSION 1.0.0 LANGUAGES CXX CUDA)
-    message(STATUS "CUDA Toolkit found, enabling CUDA language")
-    
+    find_package(CUDAToolkit REQUIRED)
+    message(STATUS "CUDA forced ON (ENABLE_CUDA=ON)")
     # 设置CUDA架构
     if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-        # 默认支持主流现代GPU架构
-        # sm_75: RTX 20系列, Tesla T4, Quadro RTX 4000-8000
-        # sm_86: RTX 30系列, A100, A40
-        # sm_89: RTX 40系列 (Ada Lovelace)
-        # sm_90: H100 (Hopper)
         set(CMAKE_CUDA_ARCHITECTURES "75;86;89;90")
         message(STATUS "CUDA architectures set to: ${CMAKE_CUDA_ARCHITECTURES}")
     endif()
 else()
-    project(J2OrbitPropagator VERSION 1.0.0 LANGUAGES CXX)
-    message(STATUS "CUDA Toolkit not found")
+    find_package(CUDAToolkit QUIET)
+    if(CUDAToolkit_FOUND)
+        project(J2OrbitPropagator VERSION 1.0.0 LANGUAGES CXX CUDA)
+        message(STATUS "CUDA Toolkit found, enabling CUDA language")
+        # 设置CUDA架构
+        if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+            set(CMAKE_CUDA_ARCHITECTURES "75;86;89;90")
+            message(STATUS "CUDA architectures set to: ${CMAKE_CUDA_ARCHITECTURES}")
+        endif()
+    else()
+        project(J2OrbitPropagator VERSION 1.0.0 LANGUAGES CXX)
+        message(STATUS "CUDA Toolkit not found")
+    endif()
 endif()
 
 # 设置C++标准
@@ -61,18 +69,18 @@ set(HEADERS
 
 # 创建静态库
 add_library(j2_orbit_propagator_static STATIC ${SOURCES} ${HEADERS})
-target_link_libraries(j2_orbit_propagator_static Eigen3::Eigen)
-target_include_directories(j2_orbit_propagator_static PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
+    target_link_libraries(j2_orbit_propagator_static Eigen3::Eigen)
+    target_include_directories(j2_orbit_propagator_static PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
 )
 
 # 创建动态库
 add_library(j2_orbit_propagator_shared SHARED ${SOURCES} ${HEADERS})
-target_link_libraries(j2_orbit_propagator_shared Eigen3::Eigen)
-target_include_directories(j2_orbit_propagator_shared PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
+    target_link_libraries(j2_orbit_propagator_shared Eigen3::Eigen)
+    target_include_directories(j2_orbit_propagator_shared PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
 )
 
 # 设置动态库的输出名称
@@ -154,6 +162,9 @@ message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  C++ standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build examples: ${BUILD_EXAMPLES}")
 message(STATUS "  Build tests: ${BUILD_TESTS}")
+if("CUDA" IN_LIST CMAKE_ENABLED_LANGUAGES)
+    message(STATUS "  CUDA enabled via languages: ${CMAKE_ENABLED_LANGUAGES}")
+endif()
 if(CUDAToolkit_FOUND)
     message(STATUS "  CUDA version: ${CUDAToolkit_VERSION}")
 endif()
