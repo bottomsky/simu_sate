@@ -38,6 +38,9 @@ if(INTEGRATION_TEST_SOURCES)
     # 为C++编译单元提供CUDA运行时头与库
     target_compile_definitions(integration_tests PRIVATE HAVE_CUDA_TOOLKIT=1)
     target_link_libraries(integration_tests PRIVATE CUDA::cudart)
+  else()
+    # 当CUDA被禁用时，确保不定义CUDA宏
+    target_compile_definitions(integration_tests PRIVATE HAVE_CUDA_TOOLKIT=0)
   endif()
 
   add_test(NAME integration_tests COMMAND integration_tests)
