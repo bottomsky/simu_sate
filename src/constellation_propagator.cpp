@@ -2,6 +2,9 @@
 #include "j2_orbit_propagator.h"  // 用于CUDA路径中的状态->要素转换
 #include <algorithm>
 #include <cstring>
+#if defined(__AVX2__) || defined(__AVX__)
+#include <immintrin.h>
+#endif
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
 #include <cuda_runtime_api.h>
 #endif
@@ -544,6 +547,172 @@ void ConstellationPropagator::applyImpulseToConstellation(const std::vector<Eige
     }
 }
 
+void ConstellationPropagator::applyImpulseToSatellites(const std::vector<size_t>& satellite_ids,
+                                                       const std::vector<Eigen::Vector3d>& delta_vs,
+                                                       double t) {
+    if (satellite_ids.size() != delta_vs.size()) {
+        throw std::invalid_argument("satellite_ids and delta_vs must have same length");
+    }
+    const size_t n_total = elements_.size();
+    const size_t m = satellite_ids.size();
+    for (size_t k = 0; k < m; ++k) {
+        if (satellite_ids[k] >= n_total) {
+            throw std::out_of_range("satellite id out of range");
+        }
+    }
+
+    switch (compute_mode_) {
+        case CPU_SCALAR: {
+            for (size_t k = 0; k < m; ++k) {
+                size_t idx = satellite_ids[k];
+                CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx],
+                                            elements_.O[idx], elements_.w[idx], elements_.M[idx]};
+                CompactOrbitalElements updated = applyImpulseScalar(elem, delta_vs[k], t);
+                elements_.a[idx] = updated.a;
+                elements_.e[idx] = updated.e;
+                elements_.i[idx] = updated.i;
+                elements_.O[idx] = updated.O;
+                elements_.w[idx] = updated.w;
+                elements_.M[idx] = updated.M;
+            }
+            break;
+        }
+        case CPU_SIMD: {
+            applyImpulseSubsetSIMD(satellite_ids, delta_vs, t);
+            break;
+        }
+        case GPU_CUDA: {
+            if (!isCudaAvailable()) {
+                std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
+                applyImpulseSubsetSIMD(satellite_ids, delta_vs, t);
+                break;
+            }
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
+            // 仅为子集构建紧凑 SoA r/v/dv
+            std::vector<double> rxyz(3 * m), vxyz(3 * m), dvxyz(3 * m);
+            for (size_t k = 0; k < m; ++k) {
+                size_t idx = satellite_ids[k];
+                CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx],
+                                            elements_.O[idx], elements_.w[idx], elements_.M[idx]};
+                StateVector state = elementsToState(elem);
+                rxyz[k] = state.r.x();
+                rxyz[k + m] = state.r.y();
+                rxyz[k + 2 * m] = state.r.z();
+                vxyz[k] = state.v.x();
+                vxyz[k + m] = state.v.y();
+                vxyz[k + 2 * m] = state.v.z();
+                dvxyz[k] = delta_vs[k].x();
+                dvxyz[k + m] = delta_vs[k].y();
+                dvxyz[k + 2 * m] = delta_vs[k].z();
+            }
+            // 调用CUDA接口对紧凑数组施加脉冲
+            cuda_apply_impulse(rxyz.data(), vxyz.data(), dvxyz.data(), m);
+            // 将结果映射回相应卫星并回写要素
+            for (size_t k = 0; k < m; ++k) {
+                size_t idx = satellite_ids[k];
+                StateVector new_state;
+                new_state.r = Eigen::Vector3d(rxyz[k], rxyz[k + m], rxyz[k + 2 * m]);
+                new_state.v = Eigen::Vector3d(vxyz[k], vxyz[k + m], vxyz[k + 2 * m]);
+                J2OrbitPropagator temp(OrbitalElements{elements_.a[idx], elements_.e[idx], elements_.i[idx],
+                                                       elements_.O[idx], elements_.w[idx], elements_.M[idx], t});
+                OrbitalElements updated_full = temp.stateToElements(new_state, t);
+                elements_.a[idx] = updated_full.a;
+                elements_.e[idx] = updated_full.e;
+                elements_.i[idx] = updated_full.i;
+                elements_.O[idx] = updated_full.O;
+                elements_.w[idx] = updated_full.w;
+                elements_.M[idx] = updated_full.M;
+            }
+#else
+            applyImpulseSubsetSIMD(satellite_ids, delta_vs, t);
+#endif
+            break;
+        }
+    }
+}
+
+void ConstellationPropagator::applyImpulseSubsetSIMD(const std::vector<size_t>& satellite_ids,
+                                                     const std::vector<Eigen::Vector3d>& delta_vs,
+                                                     double t) {
+    const size_t m = satellite_ids.size();
+    
+#if defined(__AVX2__) || defined(__AVX__)
+    // AVX2优化：收集相邻索引的卫星数据进行批处理
+    const size_t simd_width = 4; // AVX2并行处理4个double
+    size_t simd_count = m / simd_width;
+    
+    // 批量处理：每次处理4颗卫星
+    for (size_t batch = 0; batch < simd_count; ++batch) {
+        size_t start = batch * simd_width;
+        
+        // 收集4颗卫星的轨道要素到连续缓冲区
+        alignas(32) double a_vals[4], e_vals[4], i_vals[4];
+        alignas(32) double O_vals[4], w_vals[4], M_vals[4];
+        alignas(32) double dvx_vals[4], dvy_vals[4], dvz_vals[4];
+        size_t indices[4];
+        
+        for (size_t k = 0; k < simd_width; ++k) {
+            size_t idx = satellite_ids[start + k];
+            indices[k] = idx;
+            a_vals[k] = elements_.a[idx];
+            e_vals[k] = elements_.e[idx];
+            i_vals[k] = elements_.i[idx];
+            O_vals[k] = elements_.O[idx];
+            w_vals[k] = elements_.w[idx];
+            M_vals[k] = elements_.M[idx];
+            dvx_vals[k] = delta_vs[start + k].x();
+            dvy_vals[k] = delta_vs[start + k].y();
+            dvz_vals[k] = delta_vs[start + k].z();
+        }
+        
+        // 对收集的数据进行批量处理（目前仍为优化的标量循环）
+        // 未来可实现真正的AVX2向量化运算
+        for (size_t k = 0; k < simd_width; ++k) {
+            CompactOrbitalElements elem{a_vals[k], e_vals[k], i_vals[k], O_vals[k], w_vals[k], M_vals[k]};
+            Eigen::Vector3d dv(dvx_vals[k], dvy_vals[k], dvz_vals[k]);
+            CompactOrbitalElements updated = applyImpulseScalar(elem, dv, t);
+            
+            // 写回到原始索引位置
+            size_t idx = indices[k];
+            elements_.a[idx] = updated.a;
+            elements_.e[idx] = updated.e;
+            elements_.i[idx] = updated.i;
+            elements_.O[idx] = updated.O;
+            elements_.w[idx] = updated.w;
+            elements_.M[idx] = updated.M;
+        }
+    }
+    
+    // 处理剩余的卫星（不足4颗）
+    for (size_t k = simd_count * simd_width; k < m; ++k) {
+        size_t idx = satellite_ids[k];
+        CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx],
+                                    elements_.O[idx], elements_.w[idx], elements_.M[idx]};
+        CompactOrbitalElements updated = applyImpulseScalar(elem, delta_vs[k], t);
+        elements_.a[idx] = updated.a;
+        elements_.e[idx] = updated.e;
+        elements_.i[idx] = updated.i;
+        elements_.O[idx] = updated.O;
+        elements_.w[idx] = updated.w;
+        elements_.M[idx] = updated.M;
+    }
+#else
+    // 回退到标量循环
+    for (size_t k = 0; k < m; ++k) {
+        size_t idx = satellite_ids[k];
+        CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx],
+                                    elements_.O[idx], elements_.w[idx], elements_.M[idx]};
+        CompactOrbitalElements updated = applyImpulseScalar(elem, delta_vs[k], t);
+        elements_.a[idx] = updated.a;
+        elements_.e[idx] = updated.e;
+        elements_.i[idx] = updated.i;
+        elements_.O[idx] = updated.O;
+        elements_.w[idx] = updated.w;
+        elements_.M[idx] = updated.M;
+    }
+#endif
+}
+
 Eigen::MatrixXd ConstellationPropagator::getAllPositions() const {
     size_t n = elements_.size();
     Eigen::MatrixXd positions(3, n);
@@ -727,7 +896,64 @@ void ConstellationPropagator::applyImpulseSIMD(const std::vector<Eigen::Vector3d
         throw std::invalid_argument("delta_vs size must match satellite count");
     }
 
-    // 占位SIMD实现：先逐颗调用标量版本，后续可替换为AVX2批处理
+#if defined(__AVX2__) || defined(__AVX__)
+    // 启用AVX2批处理模式
+    const size_t simd_width = 4; // AVX2可并行处理4个double
+    size_t simd_count = n / simd_width;
+    size_t remaining = n % simd_width;
+    
+    // 批量处理：每次处理4颗卫星
+    for (size_t batch = 0; batch < simd_count; ++batch) {
+        size_t start_idx = batch * simd_width;
+        
+        // 为每个轨道要素分量准备AVX2打包数据
+        alignas(32) double a_vals[4], e_vals[4], i_vals[4];
+        alignas(32) double O_vals[4], w_vals[4], M_vals[4];
+        alignas(32) double dvx_vals[4], dvy_vals[4], dvz_vals[4];
+        
+        // 加载4颗卫星的轨道要素
+        for (size_t k = 0; k < simd_width; ++k) {
+            size_t idx = start_idx + k;
+            a_vals[k] = elements_.a[idx];
+            e_vals[k] = elements_.e[idx];
+            i_vals[k] = elements_.i[idx];
+            O_vals[k] = elements_.O[idx];
+            w_vals[k] = elements_.w[idx];
+            M_vals[k] = elements_.M[idx];
+            dvx_vals[k] = delta_vs[idx].x();
+            dvy_vals[k] = delta_vs[idx].y();
+            dvz_vals[k] = delta_vs[idx].z();
+        }
+        
+        // 对于AVX2实现，我们将要素→状态→脉冲→状态→要素的流程进行向量化
+        // 当前AVX2实现的复杂度较高，暂时退化为优化的标量循环
+        for (size_t k = 0; k < simd_width; ++k) {
+            size_t idx = start_idx + k;
+            CompactOrbitalElements elem{a_vals[k], e_vals[k], i_vals[k], O_vals[k], w_vals[k], M_vals[k]};
+            CompactOrbitalElements updated = applyImpulseScalar(elem, delta_vs[idx], t);
+            elements_.a[idx] = updated.a;
+            elements_.e[idx] = updated.e;
+            elements_.i[idx] = updated.i;
+            elements_.O[idx] = updated.O;
+            elements_.w[idx] = updated.w;
+            elements_.M[idx] = updated.M;
+        }
+    }
+    
+    // 处理剩余的卫星（不足4颗）
+    for (size_t idx = simd_count * simd_width; idx < n; ++idx) {
+        CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx],
+                                    elements_.O[idx], elements_.w[idx], elements_.M[idx]};
+        CompactOrbitalElements updated = applyImpulseScalar(elem, delta_vs[idx], t);
+        elements_.a[idx] = updated.a;
+        elements_.e[idx] = updated.e;
+        elements_.i[idx] = updated.i;
+        elements_.O[idx] = updated.O;
+        elements_.w[idx] = updated.w;
+        elements_.M[idx] = updated.M;
+    }
+#else
+    // 回退到标量实现
     for (size_t idx = 0; idx < n; ++idx) {
         CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx],
                                     elements_.O[idx], elements_.w[idx], elements_.M[idx]};
@@ -739,4 +965,5 @@ void ConstellationPropagator::applyImpulseSIMD(const std::vector<Eigen::Vector3d
         elements_.w[idx] = updated.w;
         elements_.M[idx] = updated.M;
     }
+#endif
 }

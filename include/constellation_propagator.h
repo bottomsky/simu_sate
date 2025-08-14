@@ -74,6 +74,11 @@ public:
     // 对整个星座施加脉冲：根据计算模式自动选择标量/SIMD/CUDA实现
     void applyImpulseToConstellation(const std::vector<Eigen::Vector3d>& delta_vs, double t);
     
+    // 对指定卫星子集施加脉冲：ids 与 delta_vs 一一对应
+    void applyImpulseToSatellites(const std::vector<size_t>& satellite_ids,
+                                  const std::vector<Eigen::Vector3d>& delta_vs,
+                                  double t);
+    
     // 设置积分步长
     void setStepSize(double step) { step_size_ = step; }
     
@@ -141,6 +146,11 @@ private:
                                              const Eigen::Vector3d& delta_v, double t) const;
     
     void applyImpulseSIMD(const std::vector<Eigen::Vector3d>& delta_vs, double t);
+
+    // 子集施加脉冲的SIMD占位实现（当前退化为标量循环）
+    void applyImpulseSubsetSIMD(const std::vector<size_t>& satellite_ids,
+                                const std::vector<Eigen::Vector3d>& delta_vs,
+                                double t);
     
     // 辅助函数
     double computeEccentricAnomaly(double M, double e) const;
