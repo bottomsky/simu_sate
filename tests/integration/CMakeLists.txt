@@ -25,6 +25,13 @@ if(INTEGRATION_TEST_SOURCES)
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/constellation_propagator.cpp
   )
 
+  # AVX2 SIMD优化编译选项
+  if(MSVC)
+    target_compile_options(integration_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/arch:AVX2>)
+  else()
+    target_compile_options(integration_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-mavx2> $<$<COMPILE_LANGUAGE:CXX>:-mfma>)
+  endif()
+
   # CUDA特定设置（仅在CUDA可用时）
   if("CUDA" IN_LIST languages)
     set_target_properties(integration_tests PROPERTIES
