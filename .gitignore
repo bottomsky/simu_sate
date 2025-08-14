@@ -12,12 +12,36 @@ tests/build-integration/
 tests/build-performance/
 tests/build-unit/
 tests/data/
+# Added: test build outputs
+tests/build-all/
+tests/build-*/
+# Added: common output folders
+Release/
+Debug/
+x64/
+out/
+dist/
 
 # IDE files
 .vscode/
 .idea/
 *.suo
 *.user
+# Added: Visual Studio folder
+.vs/
+
+# CMake generated files
+CMakeCache.txt
+CTestTestfile.cmake
+cmake_install.cmake
+# Added: CMake/CTest directories
+**/CMakeFiles/
+**/Testing/
+
+# Visual Studio build artifacts
+*.pdb
+*.ipch
+*.opendb
 
 # Misc
 .DS_Store
