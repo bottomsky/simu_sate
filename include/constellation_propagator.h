@@ -10,7 +10,7 @@
 #include "math_defs.h"
 #include "common_types.h"
 
-#ifdef __CUDACC__
+#ifdef HAVE_CUDA_TOOLKIT
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <thrust/device_vector.h>
@@ -92,7 +92,7 @@ public:
     void setComputeMode(ComputeMode mode) { compute_mode_ = mode; }
     
     // 检查CUDA可用性
-    static bool isCudaAvailable();
+    static bool isCudaAvailable() noexcept;
 
 private:
     SIMDOrbitalElements elements_;      // 星座轨道要素 (SoA格式)
@@ -137,23 +137,44 @@ private:
     double computeEccentricAnomaly(double M, double e) const;
     double computeTrueAnomaly(double E, double e) const;
     double normalizeAngle(double angle) const;
-    
-#ifdef __CUDACC__
-    // CUDA相关成员
-    double* d_elements_data_;           // GPU设备内存
-    size_t gpu_buffer_size_;
-    cublasHandle_t cublas_handle_;
+
+    // CUDA初始化与清理在所有编译单元中可见（实现内部自行判断）
     void initializeCUDA();
     void cleanupCUDA();
+
+#ifdef HAVE_CUDA_TOOLKIT
+    // CUDA相关成员（在启用CUDA工具链时可用）
+    // 持久化GPU缓冲区（避免每帧重新分配）
+    double* d_a_;              // GPU端半长轴数组
+    double* d_e_;              // GPU端偏心率数组
+    double* d_i_;              // GPU端倾角数组
+    double* d_O_;              // GPU端升交点赤经数组
+    double* d_w_;              // GPU端近地点幅角数组
+    double* d_M_;              // GPU端平近点角数组
+    double* d_x_;              // GPU端X坐标数组
+    double* d_y_;              // GPU端Y坐标数组
+    double* d_z_;              // GPU端Z坐标数组
+    size_t gpu_buffer_size_;   // GPU缓冲区大小（卫星数量）
+    cudaStream_t cuda_stream_; // CUDA流
+    cublasHandle_t cublas_handle_;
 #endif
 };
 
-// CUDA设备函数声明
-#ifdef __CUDACC__
+// CUDA设备函数声明 (总是可见，供链接时调用)
 extern "C" {
-    void cuda_propagate_j2(double* elements, size_t num_satellites, double dt, 
-                          double mu, double re, double j2);
+    void cuda_propagate_j2(double* elements, size_t num_satellites, double dt, double mu, double re, double j2);
+    void cuda_compute_positions(double* elements, double* positions, size_t num_satellites);
+    
+    // 优化的持久化缓冲区接口
+    void cuda_propagate_j2_persistent(double* d_a, double* d_e, double* d_i,
+                                     double* d_O, double* d_w, double* d_M,
+                                     size_t num_satellites, double dt,
+                                     double mu, double re, double j2,
+                                     void* stream);
+    void cuda_compute_positions_persistent(double* d_a, double* d_e, double* d_i,
+                                          double* d_O, double* d_w, double* d_M,
+                                          double* d_x, double* d_y, double* d_z,
+                                          size_t num_satellites, void* stream);
 }
-#endif
 
 #endif // CONSTELLATION_PROPAGATOR_H

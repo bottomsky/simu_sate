@@ -8,7 +8,7 @@
 ConstellationPropagator::ConstellationPropagator(double epoch_time)
     : epoch_time_(epoch_time), current_time_(epoch_time), step_size_(60.0), 
       compute_mode_(CPU_SIMD) {
-#ifdef __CUDACC__
+#if defined(HAVE_CUDA_TOOLKIT)
     d_a_ = d_e_ = d_i_ = d_O_ = d_w_ = d_M_ = nullptr;
     d_x_ = d_y_ = d_z_ = nullptr;
     gpu_buffer_size_ = 0;
@@ -17,7 +17,7 @@ ConstellationPropagator::ConstellationPropagator(double epoch_time)
 }
 
 ConstellationPropagator::~ConstellationPropagator() {
-#ifdef __CUDACC__
+#if defined(HAVE_CUDA_TOOLKIT)
     cleanupCUDA();
 #endif
 }
@@ -151,7 +151,7 @@ void ConstellationPropagator::propagateScalar(double dt) {
             double sin_i_sq = std::sin(inc) * std::sin(inc);
             
             double dO_dt = -factor * cos_i;
-            double dw_dt = factor * (2.0 - 2.5 * sin_i_sq);
+            double dw_dt = factor * (2.5 * sin_i_sq - 2.0);
             double dM_dt = n - factor * std::sqrt(1.0 - ec * ec) * (1.5 * sin_i_sq - 0.5);
             
             return {dO_dt, dw_dt, dM_dt};
@@ -235,7 +235,7 @@ void ConstellationPropagator::propagateSIMD(double dt) {
         
         // 计算导数
         __m256d dO_dt = _mm256_mul_pd(_mm256_sub_pd(_mm256_setzero_pd(), factor_norm), cos_i);
-        __m256d dw_dt = _mm256_mul_pd(factor_norm, _mm256_sub_pd(two, _mm256_mul_pd(two_point_five, sin2_i)));
+        __m256d dw_dt = _mm256_mul_pd(factor_norm, _mm256_sub_pd(_mm256_mul_pd(two_point_five, sin2_i), two));
         __m256d sqrt_one_minus_e2 = _mm256_sqrt_pd(one_minus_e2);
         __m256d dM_term = _mm256_mul_pd(factor_norm, _mm256_mul_pd(sqrt_one_minus_e2, 
                                        _mm256_sub_pd(_mm256_mul_pd(one_point_five, sin2_i), half)));
@@ -258,7 +258,8 @@ void ConstellationPropagator::propagateSIMD(double dt) {
         auto k1 = computeDerivativesSIMD(a_vec, e_vec, i_vec);
         
         // k2 = f(t + dt/2, y + k1*dt/2)
-        // 注意：对于J2摄动，只有i会影响导数，而i在短时间内变化很小，所以简化处理
+        // 对于J2摄动，a、e、i保持不变，只需要更新O、w、M进行导数计算
+        // 由于computeDerivativesSIMD只使用a、e、i，所以这里直接使用原始值即可
         auto k2 = computeDerivativesSIMD(a_vec, e_vec, i_vec);
         
         // k3 = f(t + dt/2, y + k2*dt/2)
@@ -312,7 +313,7 @@ void ConstellationPropagator::propagateSIMD(double dt) {
             double sin_i_sq = std::sin(inc) * std::sin(inc);
             
             double dO_dt = -factor * cos_i;
-            double dw_dt = factor * (2.0 - 2.5 * sin_i_sq);
+            double dw_dt = factor * (2.5 * sin_i_sq - 2.0);
             double dM_dt = mean_motion - factor * std::sqrt(1.0 - ec * ec) * (1.5 * sin_i_sq - 0.5);
             
             return {dO_dt, dw_dt, dM_dt};
@@ -499,36 +500,7 @@ void ConstellationPropagator::propagateCUDA(double dt) {
     size_t n = elements_.size();
     if (n == 0) return;
 
-    // 在启用了CUDA工具链时，采用优化的持久化缓冲区实现
-    #ifdef __CUDACC__
-    // 确保GPU缓冲区已初始化
-    if (gpu_buffer_size_ < n) {
-        initializeCUDA();
-    }
-
-    // 异步传输主机数据到设备（SoA格式，无需重排）
-    size_t size = n * sizeof(double);
-    cudaMemcpyAsync(d_a_, elements_.a.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
-    cudaMemcpyAsync(d_e_, elements_.e.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
-    cudaMemcpyAsync(d_i_, elements_.i.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
-    cudaMemcpyAsync(d_O_, elements_.O.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
-    cudaMemcpyAsync(d_w_, elements_.w.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
-    cudaMemcpyAsync(d_M_, elements_.M.data(), size, cudaMemcpyHostToDevice, cuda_stream_);
-
-    // 启动优化的CUDA内核（异步）
-    cuda_propagate_j2_persistent(d_a_, d_e_, d_i_, d_O_, d_w_, d_M_, 
-                                n, dt, MU, RE, J2, cuda_stream_);
-
-    // 异步传输结果回主机（只有变化的轨道要素）
-    cudaMemcpyAsync(elements_.O.data(), d_O_, size, cudaMemcpyDeviceToHost, cuda_stream_);
-    cudaMemcpyAsync(elements_.w.data(), d_w_, size, cudaMemcpyDeviceToHost, cuda_stream_);
-    cudaMemcpyAsync(elements_.M.data(), d_M_, size, cudaMemcpyDeviceToHost, cuda_stream_);
-
-    // 同步流确保操作完成
-    cudaStreamSynchronize(cuda_stream_);
-    #else
-    // 在C++编译环境下，通过外部C接口调用CUDA内核
-    // 将SoA打包为AoS临时缓冲区，接口假设连续布局 [a,e,i,O,w,M]*n
+    // 将当前要素打包为连续缓冲区 [a, e, i, O, w, M]（每段长度为 n）
     std::vector<double> elems(6 * n);
     for (size_t idx = 0; idx < n; ++idx) {
         elems[idx + n * 0] = elements_.a[idx];
@@ -539,14 +511,10 @@ void ConstellationPropagator::propagateCUDA(double dt) {
         elems[idx + n * 5] = elements_.M[idx];
     }
 
-    // 调用优化的CUDA接口
-    cuda_propagate_j2_persistent(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                                n, dt, MU, RE, J2, nullptr);
-    
-    // 调用老的CUDA核外推一步
+    // 使用主机级CUDA接口进行一次J2外推（内部完成H2D/D2H和内核调用）
     cuda_propagate_j2(elems.data(), n, dt, MU, RE, J2);
 
-    // 写回结果（角度已在内核中归一化）
+    // 写回结果
     for (size_t idx = 0; idx < n; ++idx) {
         elements_.a[idx] = elems[idx + n * 0];
         elements_.e[idx] = elems[idx + n * 1];
@@ -555,7 +523,6 @@ void ConstellationPropagator::propagateCUDA(double dt) {
         elements_.w[idx] = elems[idx + n * 4];
         elements_.M[idx] = elems[idx + n * 5];
     }
-    #endif
 #else
     // 回退到CPU实现
     std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
@@ -564,7 +531,7 @@ void ConstellationPropagator::propagateCUDA(double dt) {
 }
 
 void ConstellationPropagator::initializeCUDA() {
-#if defined(HAVE_CUDA_TOOLKIT) && defined(__CUDACC__)
+#if defined(HAVE_CUDA_TOOLKIT)
     size_t n = elements_.size();
     if (n > 0 && gpu_buffer_size_ < n) {
         // 清理旧缓冲区
@@ -591,7 +558,7 @@ void ConstellationPropagator::initializeCUDA() {
 }
 
 void ConstellationPropagator::cleanupCUDA() {
-#if defined(HAVE_CUDA_TOOLKIT) && defined(__CUDACC__)
+#if defined(HAVE_CUDA_TOOLKIT)
     if (gpu_buffer_size_ > 0) {
         cudaFree(d_a_);
         cudaFree(d_e_);

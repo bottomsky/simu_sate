@@ -22,7 +22,7 @@
  * 2. `compute_positions_kernel`: 将轨道要素转换为惯性系中的笛卡尔坐标。
  *
  * 文件还提供了C风格的外部接口函数，以便从C++代码中调用这些CUDA内核。
- * 如果编译时未启用CUDA (`__CUDACC__` 未定义)，则会提供这些接口的空实现，并打印警告信息。
+ * 如果编译时未启用CUDA (HAVE_CUDA_TOOLKIT 未定义)，则会提供这些接口的空实现，并打印警告信息。
  *
  * 数据布局：
  * 为了在GPU上实现高效的内存访问（合并访问），轨道要素和位置数据采用“结构数组”(SoA)的布局方式。
@@ -32,7 +32,7 @@
  * [x_1, x_2, ..., x_N, y_1, y_2, ..., y_N, z_1, ..., z_N]
  */
 
-#ifdef __CUDACC__
+#ifdef HAVE_CUDA_TOOLKIT
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #endif
@@ -40,7 +40,7 @@
 #include <cstddef>
 
 // 当没有CUDA时，提供空的实现，以确保代码可以链接和编译。
-#ifndef __CUDACC__
+#ifndef HAVE_CUDA_TOOLKIT
 #include <iostream>
 extern "C" {
 /**
@@ -143,16 +143,15 @@ __global__ void j2_propagate_kernel(double* a, double* e, double* i,
         double w_val = w[idx];
         double M_val = M[idx];
         
-        // 计算平均角速度 n = sqrt(mu / a^3)
+        // 计算平均角速度 n = sqrt(d_MU / a^3)
         double n = sqrt(d_MU / (a_val * a_val * a_val));
         
-        // 计算J2摄动引起的长期变化率的公共因子。
+        // 计算J2摄动引起的长期变化率的公共因子，与CPU实现保持一致：
         // p = a * (1 - e^2)
         double one_minus_e2 = 1.0 - e_val * e_val;
         double p = a_val * one_minus_e2;
-        // factor = (3/2) * J2 * mu * Re^2 / p^2
-        double factor = (3.0 * d_J2 * d_MU * d_RE * d_RE) / (2.0 * p * p);
-        double common_factor = factor / (n * a_val * a_val);
+        // factor = (3/2) * J2 * n * (RE/p)^2
+        double factor = 1.5 * d_J2 * n * (d_RE / p) * (d_RE / p);
         
         // 预计算三角函数值。
         double cos_i = cos(i_val);
@@ -162,12 +161,11 @@ __global__ void j2_propagate_kernel(double* a, double* e, double* i,
         
         // 计算升交点赤经、近地点幅角和平近点角的导数，并乘以时间步长得到变化量。
         // dO/dt = - (3/2) * n * J2 * (Re/p)^2 * cos(i)
-        double dO = -common_factor * cos_i * dt;
+        double dO = -factor * cos_i * dt;
         // dw/dt = (3/2) * n * J2 * (Re/p)^2 * (2 - 2.5 * sin^2(i))
-        double dw = common_factor * (2.0 - 2.5 * sin2_i) * dt;
-        // dM/dt = n + (3/2) * n * J2 * (Re/p)^2 * sqrt(1-e^2) * (1.5 * cos^2(i) - 0.5)
-        double dM_term = factor * ((3.0 * cos2_i - 1.0) / 2.0) * sqrt(one_minus_e2) / (n * a_val * a_val);
-        double dM = (n + dM_term) * dt;
+        double dw = factor * (2.0 - 2.5 * sin2_i) * dt;
+        // dM/dt 与CPU实现严格一致：n - factor * sqrt(1-e^2) * (1.5 * sin^2(i) - 0.5)
+        double dM = (n - factor * sqrt(one_minus_e2) * (1.5 * sin2_i - 0.5)) * dt;
         
         // 更新轨道要素并将角度归一化到 [0, 2*PI) 范围。
         O[idx] = normalize_angle_cuda(O_val + dO);
@@ -423,4 +421,4 @@ extern "C" {
             d_a, d_e, d_i, d_O, d_w, d_M, d_x, d_y, d_z, static_cast<int>(num_satellites));
     }
 }
-#endif // __CUDACC__
+#endif // HAVE_CUDA_TOOLKIT
