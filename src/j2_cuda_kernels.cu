@@ -162,8 +162,8 @@ __global__ void j2_propagate_kernel(double* a, double* e, double* i,
         // 计算升交点赤经、近地点幅角和平近点角的导数，并乘以时间步长得到变化量。
         // dO/dt = - (3/2) * n * J2 * (Re/p)^2 * cos(i)
         double dO = -factor * cos_i * dt;
-        // dw/dt = (3/2) * n * J2 * (Re/p)^2 * (2 - 2.5 * sin^2(i))
-        double dw = factor * (2.0 - 2.5 * sin2_i) * dt;
+        // dw/dt = (3/2) * n * J2 * (Re/p)^2 * (2.5 * sin^2(i) - 2.0)  // Match CPU implementation
+        double dw = factor * (2.5 * sin2_i - 2.0) * dt;
         // dM/dt 与CPU实现严格一致：n - factor * sqrt(1-e^2) * (1.5 * sin^2(i) - 0.5)
         double dM = (n - factor * sqrt(one_minus_e2) * (1.5 * sin2_i - 0.5)) * dt;
         
