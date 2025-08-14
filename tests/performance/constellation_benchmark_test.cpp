@@ -216,9 +216,81 @@ TEST_F(ConstellationBenchmarkTest, Satellites5000_Performance) {
     EXPECT_LT(simd_time, scalar_time);  // SIMD应比标量更快
 }
 
+// 新增：10000卫星性能测试
+TEST_F(ConstellationBenchmarkTest, Satellites10000_Performance) {
+    const size_t satellite_count = 10000;
+
+    std::cout << "\n=== 10000卫星性能基准测试 ===";
+
+    double scalar_time = runBenchmark(satellite_count,
+                                     ConstellationPropagator::CPU_SCALAR,
+                                     "CPU标量");
+
+    double simd_time = runBenchmark(satellite_count,
+                                   ConstellationPropagator::CPU_SIMD,
+                                   "CPU SIMD");
+
+    double cuda_time = 0.0;
+    if (ConstellationPropagator::isCudaAvailable()) {
+        cuda_time = runBenchmark(satellite_count,
+                                ConstellationPropagator::GPU_CUDA,
+                                "GPU CUDA");
+    } else {
+        std::cout << "\n[GPU CUDA] CUDA不可用，跳过测试\n";
+    }
+
+    std::cout << "\n--- 10000卫星性能总结 ---\n";
+    std::cout << "CPU标量: " << scalar_time << " 秒\n";
+    std::cout << "CPU SIMD: " << simd_time << " 秒 (加速比: "
+              << std::fixed << std::setprecision(2) << scalar_time / simd_time << "x)\n";
+    if (cuda_time > 0) {
+        std::cout << "GPU CUDA: " << cuda_time << " 秒 (加速比: "
+                  << std::fixed << std::setprecision(2) << scalar_time / cuda_time << "x)\n";
+    }
+
+    EXPECT_LT(simd_time, scalar_time);
+    EXPECT_LT(scalar_time, 3600.0); // 宽松上限
+}
+
+// 新增：20000卫星性能测试
+TEST_F(ConstellationBenchmarkTest, Satellites20000_Performance) {
+    const size_t satellite_count = 20000;
+
+    std::cout << "\n=== 20000卫星性能基准测试 ===";
+
+    double scalar_time = runBenchmark(satellite_count,
+                                     ConstellationPropagator::CPU_SCALAR,
+                                     "CPU标量");
+
+    double simd_time = runBenchmark(satellite_count,
+                                   ConstellationPropagator::CPU_SIMD,
+                                   "CPU SIMD");
+
+    double cuda_time = 0.0;
+    if (ConstellationPropagator::isCudaAvailable()) {
+        cuda_time = runBenchmark(satellite_count,
+                                ConstellationPropagator::GPU_CUDA,
+                                "GPU CUDA");
+    } else {
+        std::cout << "\n[GPU CUDA] CUDA不可用，跳过测试\n";
+    }
+
+    std::cout << "\n--- 20000卫星性能总结 ---\n";
+    std::cout << "CPU标量: " << scalar_time << " 秒\n";
+    std::cout << "CPU SIMD: " << simd_time << " 秒 (加速比: "
+              << std::fixed << std::setprecision(2) << scalar_time / simd_time << "x)\n";
+    if (cuda_time > 0) {
+        std::cout << "GPU CUDA: " << cuda_time << " 秒 (加速比: "
+                  << std::fixed << std::setprecision(2) << scalar_time / cuda_time << "x)\n";
+    }
+
+    EXPECT_LT(simd_time, scalar_time);
+    EXPECT_LT(scalar_time, 3600.0); // 宽松上限
+}
+
 // 综合性能对比测试
 TEST_F(ConstellationBenchmarkTest, Scalability_Analysis) {
-    std::vector<size_t> satellite_counts = {200, 1000, 5000};
+    std::vector<size_t> satellite_counts = {200, 1000, 5000, 10000, 20000};
     
     std::cout << "\n=== 可扩展性分析 ===\n";
     std::cout << std::setw(12) << "卫星数量" 
@@ -226,7 +298,7 @@ TEST_F(ConstellationBenchmarkTest, Scalability_Analysis) {
               << std::setw(12) << "CPU SIMD(s)"
               << std::setw(12) << "GPU CUDA(s)" << "\n";
     std::cout << std::string(48, '-') << "\n";
-    
+
     for (size_t count : satellite_counts) {
         auto constellation = generateConstellation(count);
         
@@ -260,28 +332,31 @@ TEST_F(ConstellationBenchmarkTest, Scalability_Analysis) {
         double simd_time = std::chrono::duration_cast<std::chrono::microseconds>(
             end - start).count() / 1000000.0;
         
-        // 测量GPU CUDA性能
-        double cuda_time = 0.0;
+        // 测量GPU CUDA性能（如可用）
+        double cuda_time = -1.0;
         if (ConstellationPropagator::isCudaAvailable()) {
-            prop_cuda.setComputeMode(ConstellationPropagator::GPU_CUDA);
-            prop_cuda.setStepSize(step_size_);
-            prop_cuda.addSatellites(constellation);
+            ConstellationPropagator prop_cuda_run(0.0);
+            prop_cuda_run.setComputeMode(ConstellationPropagator::GPU_CUDA);
+            prop_cuda_run.setStepSize(step_size_);
+            prop_cuda_run.addSatellites(constellation);
             
             start = std::chrono::high_resolution_clock::now();
             for (int i = 0; i < short_frames; ++i) {
-                prop_cuda.propagateConstellation(i * propagation_time_);
+                prop_cuda_run.propagateConstellation(i * propagation_time_);
             }
             end = std::chrono::high_resolution_clock::now();
             cuda_time = std::chrono::duration_cast<std::chrono::microseconds>(
                 end - start).count() / 1000000.0;
+        } else {
+            std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
         }
         
         std::cout << std::setw(12) << count
                   << std::setw(12) << std::fixed << std::setprecision(3) << scalar_time
                   << std::setw(12) << std::fixed << std::setprecision(3) << simd_time
-                  << std::setw(12) << std::fixed << std::setprecision(3) 
-                  << (cuda_time > 0 ? cuda_time : -1) << "\n";
+                  << std::setw(12) << std::fixed << std::setprecision(3) << (cuda_time < 0 ? simd_time : cuda_time)
+                  << "\n";
     }
-    
     std::cout << "\n注：GPU CUDA显示-1表示CUDA不可用\n";
 }
+    
