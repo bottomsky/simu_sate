@@ -16,7 +16,9 @@
 #include <math.h>
 
 // 包含C接口头文件
-#include "../j2_orbit_propagator_c.h"
+#include "../include/j2_orbit_propagator_c.h"
+#include "../include/math_defs.h"
+#include "../include/common_types.h"
 
 // 辅助函数：打印轨道要素
 void print_orbital_elements(const COrbitalElements* elements, const char* title) {
