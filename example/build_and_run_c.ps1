@@ -42,7 +42,7 @@ if (-not (Test-Path $dllPath)) {
 Write-Host "找到动态库文件: $dllPath" -ForegroundColor Green
 
 # 检查头文件是否存在
-$headerPath = "../j2_orbit_propagator_c.h"
+$headerPath = "../include/j2_orbit_propagator_c.h"
 if (-not (Test-Path $headerPath)) {
     Write-Error "未找到头文件: $headerPath"
     exit 1
@@ -54,7 +54,7 @@ Write-Host "找到头文件: $headerPath" -ForegroundColor Green
 Write-Host "编译C示例..." -ForegroundColor Yellow
 try {
     # Windows平台编译命令
-    $compileCmd = "$Compiler -o c_example.exe c_example.c -L. -lj2_orbit_propagator -lm"
+    $compileCmd = "$Compiler -I ../include -o c_example.exe c_example.c -L. -lj2_orbit_propagator -lm"
     Write-Host "执行编译命令: $compileCmd"
     
     Invoke-Expression $compileCmd
