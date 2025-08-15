@@ -28,11 +28,8 @@ typedef struct {
     double M;   // 平近点角 (rad)
 } CCompactOrbitalElements;
 
-// C格式的状态向量结构体
-typedef struct {
-    double r[3];  // 位置矢量 (m) [x, y, z]
-    double v[3];  // 速度矢量 (m/s) [vx, vy, vz]
-} CStateVector;
+// 包含共用的C状态向量定义
+#include "j2_orbit_propagator_c.h"
 
 // 计算模式枚举
 typedef enum {
