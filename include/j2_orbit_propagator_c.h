@@ -5,6 +5,19 @@
 extern "C" {
 #endif
 
+// 导出宏定义（跨平台）
+#ifndef J2_API
+  #if defined(_WIN32) || defined(_WIN64)
+    #if defined(J2_BUILD_DLL)
+      #define J2_API __declspec(dllexport)
+    #else
+      #define J2_API __declspec(dllimport)
+    #endif
+  #else
+    #define J2_API __attribute__((visibility("default")))
+  #endif
+#endif
+
 // C格式的轨道要素结构体
 typedef struct {
     double a;   // 半长轴 (m)
@@ -32,13 +45,13 @@ typedef void* J2PropagatorHandle;
  * @param initial_elements 初始轨道要素
  * @return 传播器句柄，失败时返回NULL
  */
-J2PropagatorHandle j2_propagator_create(const COrbitalElements* initial_elements);
+J2_API J2PropagatorHandle j2_propagator_create(const COrbitalElements* initial_elements);
 
 /**
  * @brief 销毁J2轨道传播器实例
  * @param handle 传播器句柄
  */
-void j2_propagator_destroy(J2PropagatorHandle handle);
+J2_API void j2_propagator_destroy(J2PropagatorHandle handle);
 
 // === 轨道传播函数 ===
 
@@ -49,7 +62,7 @@ void j2_propagator_destroy(J2PropagatorHandle handle);
  * @param result 输出的轨道要素
  * @return 0表示成功，非0表示失败
  */
-int j2_propagator_propagate(J2PropagatorHandle handle, double target_time, COrbitalElements* result);
+J2_API int j2_propagator_propagate(J2PropagatorHandle handle, double target_time, COrbitalElements* result);
 
 /**
  * @brief 从轨道要素计算状态向量
@@ -58,7 +71,7 @@ int j2_propagator_propagate(J2PropagatorHandle handle, double target_time, COrbi
  * @param state 输出的状态向量
  * @return 0表示成功，非0表示失败
  */
-int j2_propagator_elements_to_state(J2PropagatorHandle handle, const COrbitalElements* elements, CStateVector* state);
+J2_API int j2_propagator_elements_to_state(J2PropagatorHandle handle, const COrbitalElements* elements, CStateVector* state);
 
 /**
  * @brief 从状态向量计算轨道要素
@@ -68,7 +81,7 @@ int j2_propagator_elements_to_state(J2PropagatorHandle handle, const COrbitalEle
  * @param elements 输出的轨道要素
  * @return 0表示成功，非0表示失败
  */
-int j2_propagator_state_to_elements(J2PropagatorHandle handle, const CStateVector* state, double time, COrbitalElements* elements);
+J2_API int j2_propagator_state_to_elements(J2PropagatorHandle handle, const CStateVector* state, double time, COrbitalElements* elements);
 
 /**
  * @brief 在ECI系施加速度增量(脉冲)，返回更新后的轨道要素
@@ -79,7 +92,7 @@ int j2_propagator_state_to_elements(J2PropagatorHandle handle, const CStateVecto
  * @param result 输出的更新后轨道要素
  * @return 0表示成功，非0表示失败
  */
-int j2_propagator_apply_impulse(J2PropagatorHandle handle, const COrbitalElements* elements, const double delta_v[3], double t, COrbitalElements* result);
+J2_API int j2_propagator_apply_impulse(J2PropagatorHandle handle, const COrbitalElements* elements, const double delta_v[3], double t, COrbitalElements* result);
 
 // === 参数设置函数 ===
 
@@ -89,7 +102,7 @@ int j2_propagator_apply_impulse(J2PropagatorHandle handle, const COrbitalElement
  * @param step_size 步长 (s)
  * @return 0表示成功，非0表示失败
  */
-int j2_propagator_set_step_size(J2PropagatorHandle handle, double step_size);
+J2_API int j2_propagator_set_step_size(J2PropagatorHandle handle, double step_size);
 
 /**
  * @brief 获取当前积分步长
@@ -97,7 +110,7 @@ int j2_propagator_set_step_size(J2PropagatorHandle handle, double step_size);
  * @param step_size 输出的步长 (s)
  * @return 0表示成功，非0表示失败
  */
-int j2_propagator_get_step_size(J2PropagatorHandle handle, double* step_size);
+J2_API int j2_propagator_get_step_size(J2PropagatorHandle handle, double* step_size);
 
 /**
  * @brief 启用或禁用自适应步长
@@ -105,7 +118,7 @@ int j2_propagator_get_step_size(J2PropagatorHandle handle, double* step_size);
  * @param enable 1启用，0禁用
  * @return 0表示成功，非0表示失败
  */
-int j2_propagator_set_adaptive_step_size(J2PropagatorHandle handle, int enable);
+J2_API int j2_propagator_set_adaptive_step_size(J2PropagatorHandle handle, int enable);
 
 /**
  * @brief 设置自适应步长参数
@@ -115,7 +128,7 @@ int j2_propagator_set_adaptive_step_size(J2PropagatorHandle handle, int enable);
  * @param max_step 最大步长 (s)
  * @return 0表示成功，非0表示失败
  */
-int j2_propagator_set_adaptive_parameters(J2PropagatorHandle handle, double tolerance, double min_step, double max_step);
+J2_API int j2_propagator_set_adaptive_parameters(J2PropagatorHandle handle, double tolerance, double min_step, double max_step);
 
 // === 坐标转换函数 ===
 
@@ -126,7 +139,7 @@ int j2_propagator_set_adaptive_parameters(J2PropagatorHandle handle, double tole
  * @param ecef_position 输出的ECEF位置向量 [x, y, z] (m)
  * @return 0表示成功，非0表示失败
  */
-int j2_eci_to_ecef_position(const double eci_position[3], double utc_seconds, double ecef_position[3]);
+J2_API int j2_eci_to_ecef_position(const double eci_position[3], double utc_seconds, double ecef_position[3]);
 
 /**
  * @brief ECEF到ECI坐标转换
@@ -135,7 +148,7 @@ int j2_eci_to_ecef_position(const double eci_position[3], double utc_seconds, do
  * @param eci_position 输出的ECI位置向量 [x, y, z] (m)
  * @return 0表示成功，非0表示失败
  */
-int j2_ecef_to_eci_position(const double ecef_position[3], double utc_seconds, double eci_position[3]);
+J2_API int j2_ecef_to_eci_position(const double ecef_position[3], double utc_seconds, double eci_position[3]);
 
 /**
  * @brief ECI到ECEF速度转换
@@ -145,7 +158,7 @@ int j2_ecef_to_eci_position(const double ecef_position[3], double utc_seconds, d
  * @param ecef_velocity 输出的ECEF速度向量 [vx, vy, vz] (m/s)
  * @return 0表示成功，非0表示失败
  */
-int j2_eci_to_ecef_velocity(const double eci_position[3], const double eci_velocity[3], double utc_seconds, double ecef_velocity[3]);
+J2_API int j2_eci_to_ecef_velocity(const double eci_position[3], const double eci_velocity[3], double utc_seconds, double ecef_velocity[3]);
 
 /**
  * @brief ECEF到ECI速度转换
@@ -155,7 +168,7 @@ int j2_eci_to_ecef_velocity(const double eci_position[3], const double eci_veloc
  * @param eci_velocity 输出的ECI速度向量 [vx, vy, vz] (m/s)
  * @return 0表示成功，非0表示失败
  */
-int j2_ecef_to_eci_velocity(const double ecef_position[3], const double ecef_velocity[3], double utc_seconds, double eci_velocity[3]);
+J2_API int j2_ecef_to_eci_velocity(const double ecef_position[3], const double ecef_velocity[3], double utc_seconds, double eci_velocity[3]);
 
 // === 工具函数 ===
 
@@ -165,14 +178,14 @@ int j2_ecef_to_eci_velocity(const double ecef_position[3], const double ecef_vel
  * @param gmst 输出的GMST (弧度)
  * @return 0表示成功，非0表示失败
  */
-int j2_compute_gmst(double utc_seconds, double* gmst);
+J2_API int j2_compute_gmst(double utc_seconds, double* gmst);
 
 /**
  * @brief 角度归一化到[0, 2π)范围
  * @param angle 输入角度 (弧度)
  * @return 归一化后的角度 (弧度)
  */
-double j2_normalize_angle(double angle);
+J2_API double j2_normalize_angle(double angle);
 
 #ifdef __cplusplus
 }
