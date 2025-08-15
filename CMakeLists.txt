@@ -57,12 +57,16 @@ include_directories(
 set(SOURCES
     src/j2_orbit_propagator.cpp
     src/j2_orbit_propagator_c.cpp
+    src/constellation_propagator.cpp
+    src/constellation_propagator_c.cpp
 )
 
 # 头文件
 set(HEADERS
     include/j2_orbit_propagator.h
     include/j2_orbit_propagator_c.h
+    include/constellation_propagator.h
+    include/constellation_propagator_c.h
     include/common_types.h
     include/math_defs.h
 )
@@ -83,20 +87,16 @@ add_library(j2_orbit_propagator_shared SHARED ${SOURCES} ${HEADERS})
         $<INSTALL_INTERFACE:include>
 )
 
-# 设置动态库的输出名称
+# 设置共享库目标属性
 set_target_properties(j2_orbit_propagator_shared PROPERTIES
-    OUTPUT_NAME j2_orbit_propagator
     VERSION ${PROJECT_VERSION}
-    SOVERSION 1
+    SOVERSION ${PROJECT_VERSION_MAJOR}
+    OUTPUT_NAME j2_orbit_propagator
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
-# Windows特定设置
-if(WIN32)
-    # 导出所有符号
-    set_target_properties(j2_orbit_propagator_shared PROPERTIES
-        WINDOWS_EXPORT_ALL_SYMBOLS ON
-    )
-endif()
+# 为共享库定义导出宏
+target_compile_definitions(j2_orbit_propagator_shared PRIVATE J2_BUILD_DLL)
 
 # 可选：构建示例程序
 option(BUILD_EXAMPLES "Build example programs" ON)
