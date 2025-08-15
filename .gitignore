@@ -46,3 +46,22 @@ cmake_install.cmake
 # Misc
 .DS_Store
 Thumbs.db
+
+# C# example artifacts (example/csharp)
+example/csharp/**/bin/
+example/csharp/**/obj/
+example/csharp/**/TestResults/
+example/csharp/**/.vs/
+example/csharp/**/.idea/
+example/csharp/**/.vscode/
+example/csharp/**/*.user
+example/csharp/**/*.suo
+example/csharp/**/packages/
+example/csharp/**/*.nupkg
+example/csharp/**/*.snupkg
+example/csharp/**/*.nuget.props
+example/csharp/**/*.nuget.targets
+# Optional: ignore native DLL copied for running examples
+example/csharp/j2_orbit_propagator.dll
+# If a second copy exists in example/ as build output
+example/j2_orbit_propagator.dll
