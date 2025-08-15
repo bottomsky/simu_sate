@@ -18,6 +18,10 @@ ConstellationPropagator::ConstellationPropagator(double epoch_time)
     gpu_buffer_size_ = 0;
     cuda_stream_ = 0;
 #endif
+    // 自动检测 CUDA 并优先启用 GPU 模式（当运行环境支持且构建启用 CUDA 时）
+    if (isCudaAvailable()) {
+        compute_mode_ = GPU_CUDA;
+    }
 }
 
 ConstellationPropagator::~ConstellationPropagator() {

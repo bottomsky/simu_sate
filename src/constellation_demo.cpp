@@ -73,6 +73,16 @@ int main() {
     std::cout << "=== J2轨道外推器大规模星座演示 ===" << std::endl;
     std::cout << std::endl;
     
+    // CUDA 运行检测提示
+    bool cudaAvailable = ConstellationPropagator::isCudaAvailable();
+    std::cout << "CUDA 可用性检测: " << (cudaAvailable ? "可用" : "不可用") << std::endl;
+    if (cudaAvailable) {
+        std::cout << "提示: 创建的 ConstellationPropagator 将自动优先使用 CUDA 加速计算" << std::endl;
+    } else {
+        std::cout << "提示: 将使用 CPU SIMD 模式进行计算" << std::endl;
+    }
+    std::cout << std::endl;
+    
     // 测试不同规模的星座
     std::vector<size_t> test_sizes = {1000, 5000, 10000, 20000};
     double propagation_time = 3600.0;  // 外推1小时
@@ -84,10 +94,14 @@ int main() {
         std::vector<CompactOrbitalElements> satellites;
         generateRandomConstellation(satellites, sat_count);
         
-        // 创建传播器并添加卫星
+        // 创建传播器并添加卫星（会自动检测并使用最佳计算模式）
         ConstellationPropagator propagator(0.0);
         propagator.addSatellites(satellites);
         propagator.setStepSize(60.0);  // 60秒步长
+        
+        // 显示自动选择的计算模式
+        std::cout << "自动选择的计算模式: " << (cudaAvailable ? "GPU CUDA (自动启用)" : "CPU SIMD (默认)") << std::endl;
+        std::cout << std::endl;
         
         // 打印内存使用情况
         printMemoryUsage(propagator);
