@@ -230,6 +230,12 @@ namespace J2.Propagator
         {
             _handle = constellation_propagator_create(epochTimeSeconds);
             if (_handle == IntPtr.Zero) throw new PropagationException("Failed to create ConstellationPropagator");
+            
+            // 如果 CUDA 可用，自动优先使用 CUDA 计算模式
+            if (IsCudaAvailable())
+            {
+                SetComputeMode(ComputeMode.GpuCuda);
+            }
         }
 
         public void AddSatellite(CCompactOrbitalElements elems)
