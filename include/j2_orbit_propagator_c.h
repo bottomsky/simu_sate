@@ -8,12 +8,16 @@ extern "C" {
 // 导出宏定义（跨平台）
 #ifndef J2_API
   #if defined(_WIN32) || defined(_WIN64)
-    #if defined(J2_BUILD_DLL)
+    #if defined(J2_BUILD_STATIC)
+      // 静态库不需要导入/导出修饰
+      #define J2_API
+    #elif defined(J2_BUILD_DLL)
       #define J2_API __declspec(dllexport)
     #else
       #define J2_API __declspec(dllimport)
     #endif
   #else
+    // 非 Windows 平台：静态库与共享库统一使用默认可见性
     #define J2_API __attribute__((visibility("default")))
   #endif
 #endif
@@ -155,7 +159,7 @@ J2_API int j2_ecef_to_eci_position(const double ecef_position[3], double utc_sec
  * @param eci_position ECI位置向量 [x, y, z] (m)
  * @param eci_velocity ECI速度向量 [vx, vy, vz] (m/s)
  * @param utc_seconds UTC时间 (秒，从某个参考时刻开始)
- * @param ecef_velocity 输出的ECEF速度向量 [vx, vy, vz] (m/s)
+ * @param ecef_velocity 输出的ECEF速度向量 [vx, y, z] (m/s)
  * @return 0表示成功，非0表示失败
  */
 J2_API int j2_eci_to_ecef_velocity(const double eci_position[3], const double eci_velocity[3], double utc_seconds, double ecef_velocity[3]);

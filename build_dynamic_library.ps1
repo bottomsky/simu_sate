@@ -1,7 +1,7 @@
 ﻿# J2轨道传播器动态库构建脚本
 # 该脚本用于在Windows平台上构建J2轨道传播器的动态库
 
-<#!
+<#
 .SYNOPSIS
  构建 J2 轨道传播器的动态库与测试。
 .DESCRIPTION
@@ -17,10 +17,12 @@
  构建后执行安装（别名: -i）。
 .PARAMETER InstallPrefix
  安装前缀目录（别名: -p, -prefix）。默认: $PWD\install。
+.PARAMETER BuildDir
+ 构建目录（别名: -b）。默认: build。可指定为相对或绝对路径。
 .EXAMPLE
  ./build_dynamic_library.ps1 -t Release -g "Visual Studio 17 2022" -c -i -p .\install
 .EXAMPLE
- ./build_dynamic_library.ps1 -config Debug -i
+ ./build_dynamic_library.ps1 -config Debug -i -b build
 #>
 
 param(
@@ -28,10 +30,10 @@ param(
     [Alias('g')][string]$Generator = "Visual Studio 17 2022",
     [Alias('c')][switch]$Clean,
     [Alias('i')][switch]$Install,
-    [Alias('p','prefix')][string]$InstallPrefix = "$PWD\install"
+    [Alias('p','prefix')][string]$InstallPrefix = "$PWD\install",
+    [Alias('b')][string]$BuildDir = "build"
 )
 
-# 设置错误处理
 $ErrorActionPreference = "Stop"
 
 # 获取脚本所在目录
@@ -51,7 +53,7 @@ try {
 }
 
 # 创建构建目录
-$BuildDir = "build"
+# 使用参数化的 BuildDir 以便与其他脚本统一
 if ($Clean -and (Test-Path $BuildDir)) {
     Write-Host "清理构建目录: $BuildDir" -ForegroundColor Yellow
     Remove-Item -Recurse -Force $BuildDir
@@ -68,6 +70,7 @@ Set-Location $BuildDir
 Write-Host "配置CMake项目..." -ForegroundColor Yellow
 Write-Host "构建类型: $BuildType" -ForegroundColor Cyan
 Write-Host "生成器: $Generator" -ForegroundColor Cyan
+Write-Host "构建目录: $BuildDir" -ForegroundColor Cyan
 
 $cmakeArgs = @(
     "..",

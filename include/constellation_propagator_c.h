@@ -8,12 +8,16 @@ extern "C" {
 // 导出宏定义（与j2_orbit_propagator_c.h保持一致）
 #ifndef J2_API
   #if defined(_WIN32) || defined(_WIN64)
-    #if defined(J2_BUILD_DLL)
+    #if defined(J2_BUILD_STATIC)
+      // 静态库不需要导入/导出修饰
+      #define J2_API
+    #elif defined(J2_BUILD_DLL)
       #define J2_API __declspec(dllexport)
     #else
       #define J2_API __declspec(dllimport)
     #endif
   #else
+    // 非 Windows 平台：静态库与共享库统一使用默认可见性
     #define J2_API __attribute__((visibility("default")))
   #endif
 #endif

@@ -1,14 +1,13 @@
 ﻿param(
     [string]$BuildType = "Release",
-    [string]$NativeBuildDir = "..\..\build-$BuildType"
+    [string]$NativeBuildDir = "..\..\build"
 )
 
 $ErrorActionPreference = 'Stop'
 
 function Ensure-Native-Build {
     param([string]$Config)
-    $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $buildDir = Join-Path $root "build-$Config"
+    $buildDir = Join-Path $PSScriptRoot $NativeBuildDir
     if (-not (Test-Path $buildDir)) { New-Item -ItemType Directory -Path $buildDir | Out-Null }
     Push-Location $buildDir
     try {

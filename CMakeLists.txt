@@ -73,11 +73,12 @@ set(HEADERS
 
 # 创建静态库
 add_library(j2_orbit_propagator_static STATIC ${SOURCES} ${HEADERS})
-    target_link_libraries(j2_orbit_propagator_static Eigen3::Eigen)
-    target_include_directories(j2_orbit_propagator_static PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
+target_link_libraries(j2_orbit_propagator_static Eigen3::Eigen)
+target_include_directories(j2_orbit_propagator_static PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
 )
+target_compile_definitions(j2_orbit_propagator_static PRIVATE J2_BUILD_STATIC)
 
 # 创建动态库
 add_library(j2_orbit_propagator_shared SHARED ${SOURCES} ${HEADERS})
