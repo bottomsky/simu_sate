@@ -1,0 +1,49 @@
+# C++ 开发基础镜像
+# 包含常用的 C++ 开发依赖：cmake、git、pkgconfig、eigen-dev、linux-headers
+# 适用于多个 C++ 项目的通用基础镜像
+
+FROM prantlf/alpine-make-gcc:latest
+
+# 设置镜像标签
+LABEL maintainer="C++ Development Team"
+LABEL description="Alpine Linux base image with C++ development dependencies"
+LABEL version="1.0"
+
+# 安装 C++ 开发必需的依赖包
+RUN apk update && apk add --no-cache \
+        cmake \
+        git \
+        pkgconfig \
+        eigen-dev \
+        linux-headers \
+        build-base \
+        gcompat \
+        libc6-compat && \
+    # 清理缓存以减小镜像大小
+    rm -rf /var/cache/apk/* && \
+    # 验证安装的工具版本
+    echo "=== 验证安装的开发工具 ===" && \
+    gcc --version && \
+    g++ --version && \
+    cmake --version && \
+    git --version && \
+    pkg-config --version && \
+    echo "=== Eigen 库信息 ===" && \
+    find /usr -name "Eigen" -type d 2>/dev/null | head -5 && \
+    echo "=== 基础镜像构建完成 ==="
+
+# 设置工作目录
+WORKDIR /workspace
+
+# 设置环境变量
+ENV CC=gcc
+ENV CXX=g++
+ENV CMAKE_BUILD_TYPE=Release
+
+# 添加构建信息
+RUN echo "C++ Development Base Image" > /etc/motd && \
+    echo "Installed packages: cmake, git, pkgconfig, eigen-dev, linux-headers" >> /etc/motd && \
+    echo "Build date: $(date)" >> /etc/motd
+
+# 默认命令
+CMD ["/bin/sh"]

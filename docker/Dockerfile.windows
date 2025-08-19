@@ -1,0 +1,141 @@
+# J2 Orbit Propagator - Windows Build Environment
+# This Dockerfile creates a Windows build environment for the J2 orbit propagator
+
+# Use Windows Server Core with Visual Studio Build Tools
+FROM mcr.microsoft.com/dotnet/framework/sdk:4.8-windowsservercore-ltsc2022
+
+# Set shell to PowerShell
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Install Chocolatey with retry mechanism
+RUN Set-ExecutionPolicy Bypass -Scope Process -Force; \
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; \
+    $maxRetries = 3; \
+    $retryCount = 0; \
+    do { \
+        try { \
+            Write-Host "Attempting to install Chocolatey (attempt $($retryCount + 1) of $maxRetries)"; \
+            $webClient = New-Object System.Net.WebClient; \
+            $webClient.Proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials; \
+            $installScript = $webClient.DownloadString('https://community.chocolatey.org/install.ps1'); \
+            Invoke-Expression $installScript; \
+            Write-Host "Chocolatey installed successfully"; \
+            break; \
+        } catch { \
+            $retryCount++; \
+            Write-Host "Failed to install Chocolatey: $($_.Exception.Message)"; \
+            if ($retryCount -lt $maxRetries) { \
+                Write-Host "Retrying in 10 seconds..."; \
+                Start-Sleep -Seconds 10; \
+            } else { \
+                Write-Host "All retry attempts failed. Trying alternative method..."; \
+                try { \
+                    $env:chocolateyUseWindowsCompression = 'true'; \
+                    Set-ExecutionPolicy Bypass -Scope Process -Force; \
+                    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; \
+                    iwr https://community.chocolatey.org/install.ps1 -UseBasicParsing | iex; \
+                    Write-Host "Chocolatey installed using alternative method"; \
+                } catch { \
+                    Write-Error "Failed to install Chocolatey after all attempts: $($_.Exception.Message)"; \
+                    exit 1; \
+                } \
+            } \
+        } \
+    } while ($retryCount -lt $maxRetries)
+
+# Install build tools with retry mechanism
+RUN $maxRetries = 3; \
+    $packages = @('cmake', 'git', 'visualstudio2022buildtools', 'visualstudio2022-workload-vctools', 'ninja'); \
+    foreach ($package in $packages) { \
+        $retryCount = 0; \
+        do { \
+            try { \
+                Write-Host "Installing $package (attempt $($retryCount + 1) of $maxRetries)"; \
+                choco install -y $package --no-progress --limit-output; \
+                Write-Host "$package installed successfully"; \
+                break; \
+            } catch { \
+                $retryCount++; \
+                Write-Host "Failed to install $package: $($_.Exception.Message)"; \
+                if ($retryCount -lt $maxRetries) { \
+                    Write-Host "Retrying in 5 seconds..."; \
+                    Start-Sleep -Seconds 5; \
+                } else { \
+                    Write-Error "Failed to install $package after $maxRetries attempts"; \
+                    exit 1; \
+                } \
+            } \
+        } while ($retryCount -lt $maxRetries); \
+    }
+
+# Install CUDA Toolkit (optional, for GPU support)
+# Uncomment the following line if CUDA support is needed
+# RUN choco install -y cuda
+
+# Refresh environment variables
+RUN refreshenv
+
+# Set working directory
+WORKDIR C:\workspace
+
+# Copy source code
+COPY . .
+
+# Set default build arguments
+ARG BUILD_TYPE=Release
+ARG ENABLE_CUDA=false
+ARG ENABLE_TESTS=true
+ARG ENABLE_EXAMPLES=true
+ARG JOBS=4
+ARG GENERATOR="Visual Studio 17 2022"
+
+# Build the project
+RUN $buildArgs = @(); \
+    $buildArgs += '-BuildType', $env:BUILD_TYPE; \
+    $buildArgs += '-BuildDir', 'C:\workspace\build'; \
+    $buildArgs += '-Jobs', $env:JOBS; \
+    $buildArgs += '-Generator', $env:GENERATOR; \
+    if ($env:ENABLE_CUDA -eq 'true') { $buildArgs += '-EnableCuda' }; \
+    if ($env:ENABLE_TESTS -eq 'false') { $buildArgs += '-DisableTests' }; \
+    if ($env:ENABLE_EXAMPLES -eq 'false') { $buildArgs += '-DisableExamples' }; \
+    & .\build_dynamic_library.ps1 @buildArgs
+
+# Create output directory
+RUN New-Item -ItemType Directory -Path C:\output -Force
+
+# Copy build artifacts to output directory
+RUN $buildDir = 'C:\workspace\build'; \
+    $outputDir = 'C:\output'; \
+    $configDir = Join-Path $buildDir $env:BUILD_TYPE; \
+    if (Test-Path (Join-Path $configDir 'j2_orbit_propagator.dll')) { \
+        Copy-Item (Join-Path $configDir 'j2_orbit_propagator.dll') $outputDir; \
+    }; \
+    if (Test-Path (Join-Path $configDir 'j2_orbit_propagator.lib')) { \
+        Copy-Item (Join-Path $configDir 'j2_orbit_propagator.lib') $outputDir; \
+    }; \
+    if (Test-Path (Join-Path $configDir 'j2_orbit_propagator_static.lib')) { \
+        Copy-Item (Join-Path $configDir 'j2_orbit_propagator_static.lib') $outputDir; \
+    }; \
+    if (Test-Path (Join-Path $configDir 'j2_example.exe')) { \
+        Copy-Item (Join-Path $configDir 'j2_example.exe') $outputDir; \
+    }; \
+    if (Test-Path (Join-Path $configDir 'unit_tests.exe')) { \
+        Copy-Item (Join-Path $configDir 'unit_tests.exe') $outputDir; \
+    }; \
+    if (Test-Path (Join-Path $configDir 'integration_tests.exe')) { \
+        Copy-Item (Join-Path $configDir 'integration_tests.exe') $outputDir; \
+    }; \
+    if (Test-Path (Join-Path $configDir 'performance_tests.exe')) { \
+        Copy-Item (Join-Path $configDir 'performance_tests.exe') $outputDir; \
+    }
+
+# Copy headers
+RUN Copy-Item -Recurse -Path 'C:\workspace\include' -Destination 'C:\output\include'
+
+# Set default command
+CMD ["powershell", "-Command", "Copy-Item -Recurse -Path 'C:\\output\\*' -Destination 'C:\\host_output\\'"]
+
+# Labels
+LABEL maintainer="J2 Orbit Propagator Team"
+LABEL description="Windows build environment for J2 Orbit Propagator"
+LABEL version="1.0.0"

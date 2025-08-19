@@ -1,0 +1,58 @@
+# J2 Orbit Propagator - Docker Compose Configuration
+# This file allows building both Linux and Windows versions simultaneously
+
+version: '3.8'
+
+services:
+  # Linux build service
+  linux-build:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.linux
+      args:
+        BUILD_TYPE: ${BUILD_TYPE:-Release}
+        ENABLE_CUDA: ${ENABLE_CUDA:-false}
+        ENABLE_TESTS: ${ENABLE_TESTS:-true}
+        ENABLE_EXAMPLES: ${ENABLE_EXAMPLES:-true}
+        JOBS: ${JOBS:-4}
+    image: j2-orbit-propagator:linux
+    container_name: j2-linux-build
+    volumes:
+      - ../output/linux:/host_output
+    environment:
+      - BUILD_TYPE=${BUILD_TYPE:-Release}
+    networks:
+      - j2-build-network
+
+  # Windows build service (requires Windows containers)
+  windows-build:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.windows
+      args:
+        BUILD_TYPE: ${BUILD_TYPE:-Release}
+        ENABLE_CUDA: ${ENABLE_CUDA:-false}
+        ENABLE_TESTS: ${ENABLE_TESTS:-true}
+        ENABLE_EXAMPLES: ${ENABLE_EXAMPLES:-true}
+        JOBS: ${JOBS:-4}
+        GENERATOR: ${GENERATOR:-"Visual Studio 17 2022"}
+    image: j2-orbit-propagator:windows
+    container_name: j2-windows-build
+    volumes:
+      - ../output/windows:C:/host_output
+    environment:
+      - BUILD_TYPE=${BUILD_TYPE:-Release}
+    networks:
+      - j2-build-network
+    # Note: This service requires Docker Desktop with Windows containers enabled
+    platform: windows/amd64
+
+networks:
+  j2-build-network:
+    driver: bridge
+
+volumes:
+  linux-output:
+    driver: local
+  windows-output:
+    driver: local
