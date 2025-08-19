@@ -21,8 +21,8 @@ RUN echo "=== Setting up build environment ===" && \
     export CXXFLAGS="-Wall -Wextra -pedantic -mavx2 -mfma -Wno-unused-variable -Wno-unused-but-set-variable" && \
     echo "CXXFLAGS set to: $CXXFLAGS"
 
-# 复制源代码
-COPY . .
+# 复制源代码（从项目根目录复制）
+COPY ../ .
 
 # 完全清理任何现有的构建产物
 RUN echo "=== Cleaning all build artifacts ===" && \
@@ -99,8 +99,8 @@ RUN echo "=== Building project ===" && \
 RUN echo "=== Copying build artifacts ===" && \
     mkdir -p /output && \
     echo "=== 复制动态库到输出目录 ===" && \
-    find build -name "*.so" -exec cp -v {} /output/ \; && \
-    find build -name "*.a" -exec cp -v {} /output/ \; && \
+    find bin -name "*.so" -exec cp -v {} /output/ \; && \
+    find bin -name "*.a" -exec cp -v {} /output/ \; && \
     echo "=== 输出目录信息 ===" && \
     echo "容器内输出目录: /output" && \
     echo "输出目录内容:" && \

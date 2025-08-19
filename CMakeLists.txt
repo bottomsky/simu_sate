@@ -33,11 +33,24 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# 设置输出目录 - 所有编译产物统一输出到 bin 目录
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)
+
+# 为不同配置类型设置输出目录
+foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
+    string(TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_CURRENT_SOURCE_DIR}/bin)
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_CURRENT_SOURCE_DIR}/bin)
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_CURRENT_SOURCE_DIR}/bin)
+endforeach()
+
 # 设置编译选项（仅针对C++源文件，避免影响CUDA编译）
 if(MSVC)
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/W4>)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/W4> $<$<COMPILE_LANGUAGE:CXX>:/arch:AVX2>)
 else()
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wall> $<$<COMPILE_LANGUAGE:CXX>:-Wextra> $<$<COMPILE_LANGUAGE:CXX>:-pedantic>)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wall> $<$<COMPILE_LANGUAGE:CXX>:-Wextra> $<$<COMPILE_LANGUAGE:CXX>:-pedantic> $<$<COMPILE_LANGUAGE:CXX>:-mavx2> $<$<COMPILE_LANGUAGE:CXX>:-mfma> $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-variable> $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-but-set-variable>)
 endif()
 
 # 使用项目中的Eigen库
@@ -82,10 +95,10 @@ target_compile_definitions(j2_orbit_propagator_static PRIVATE J2_BUILD_STATIC)
 
 # 创建动态库
 add_library(j2_orbit_propagator_shared SHARED ${SOURCES} ${HEADERS})
-    target_link_libraries(j2_orbit_propagator_shared Eigen3::Eigen)
-    target_include_directories(j2_orbit_propagator_shared PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
+target_link_libraries(j2_orbit_propagator_shared Eigen3::Eigen)
+target_include_directories(j2_orbit_propagator_shared PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
 )
 
 # 设置共享库目标属性
