@@ -1,6 +1,8 @@
 #ifndef CONSTELLATION_PROPAGATOR_C_H
 #define CONSTELLATION_PROPAGATOR_C_H
 
+#include <stddef.h>  // 确保 size_t 类型定义正确
+
 #ifdef __cplusplus
 extern "C" {
 #endif
