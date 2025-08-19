@@ -166,7 +166,29 @@ if [ "$INSTALL_BUILD" = true ]; then
     cmake --install . --config "$BUILD_TYPE"
 fi
 
-# Copy shared library to examples directory if it exists
+# Copy all build artifacts to bin directory
+BIN_DIR="../bin"
+mkdir -p "$BIN_DIR"
+
+# Copy shared libraries
+if ls *.so 1> /dev/null 2>&1; then
+    echo "Copying shared libraries to bin directory..."
+    cp *.so "$BIN_DIR/"
+fi
+
+# Copy static libraries
+if ls *.a 1> /dev/null 2>&1; then
+    echo "Copying static libraries to bin directory..."
+    cp *.a "$BIN_DIR/"
+fi
+
+# Copy executables
+if ls *_tests j2_example 1> /dev/null 2>&1; then
+    echo "Copying executables to bin directory..."
+    cp *_tests j2_example "$BIN_DIR/" 2>/dev/null || true
+fi
+
+# Copy shared library to examples directory if it exists (backward compatibility)
 if [ "$ENABLE_EXAMPLES" = true ] && [ -f "libj2_orbit_propagator.so" ]; then
     EXAMPLE_DIR="../examples"
     if [ -d "$EXAMPLE_DIR" ]; then

@@ -180,7 +180,40 @@ if ($exeFiles) {
     }
 }
 
-# 复制动态库到示例目录
+# 复制动态库到bin目录
+$BinDir = "..\bin"
+if (-not (Test-Path $BinDir)) {
+    New-Item -ItemType Directory -Path $BinDir | Out-Null
+}
+
+if ($dllFiles) {
+    Write-Host "复制动态库到bin目录..." -ForegroundColor Yellow
+    foreach ($dll in $dllFiles) {
+        $destPath = Join-Path $BinDir $dll.Name
+        Copy-Item $dll.FullName $destPath -Force
+        Write-Host "  复制: $($dll.Name) -> $destPath" -ForegroundColor White
+    }
+}
+
+if ($libFiles) {
+    Write-Host "复制静态库到bin目录..." -ForegroundColor Yellow
+    foreach ($lib in $libFiles) {
+        $destPath = Join-Path $BinDir $lib.Name
+        Copy-Item $lib.FullName $destPath -Force
+        Write-Host "  复制: $($lib.Name) -> $destPath" -ForegroundColor White
+    }
+}
+
+if ($exeFiles) {
+    Write-Host "复制可执行文件到bin目录..." -ForegroundColor Yellow
+    foreach ($exe in $exeFiles) {
+        $destPath = Join-Path $BinDir $exe.Name
+        Copy-Item $exe.FullName $destPath -Force
+        Write-Host "  复制: $($exe.Name) -> $destPath" -ForegroundColor White
+    }
+}
+
+# 复制动态库到示例目录（保持向后兼容）
 $ExampleDir = "..\example"
 if ($dllFiles -and (Test-Path $ExampleDir)) {
     Write-Host "复制动态库到示例目录..." -ForegroundColor Yellow
