@@ -7,10 +7,12 @@
 .DESCRIPTION
  使用 CMake 在 Windows 平台生成并构建项目，支持可选清理与安装步骤。
  支持为 CMake 指定构建类型与生成器，并可将构建产物安装到指定前缀目录。
+ 增强的跨平台特性支持，包括 CUDA、多种生成器和并行构建选项。
 .PARAMETER BuildType
  构建类型（别名: -t, -config）。可选: Debug, Release, RelWithDebInfo, MinSizeRel。默认: Release。
 .PARAMETER Generator
  CMake 生成器（别名: -g）。默认: "Visual Studio 17 2022"。
+ 其他选项: "Ninja", "MinGW Makefiles", "Visual Studio 16 2019"等。
 .PARAMETER Clean
  在配置/构建前清理构建目录（别名: -c）。
 .PARAMETER Install
@@ -19,10 +21,20 @@
  安装前缀目录（别名: -p, -prefix）。默认: $PWD\install。
 .PARAMETER BuildDir
  构建目录（别名: -b）。默认: build。可指定为相对或绝对路径。
+.PARAMETER EnableCuda
+ 强制启用 CUDA 支持。
+.PARAMETER DisableTests
+ 禁用测试构建。
+.PARAMETER DisableExamples
+ 禁用示例构建。
+.PARAMETER Jobs
+ 并行构建作业数（别名: -j）。默认: 自动检测处理器核心数。
 .EXAMPLE
  ./build_dynamic_library.ps1 -t Release -g "Visual Studio 17 2022" -c -i -p .\install
 .EXAMPLE
- ./build_dynamic_library.ps1 -config Debug -i -b build
+ ./build_dynamic_library.ps1 -config Debug -i -b build -EnableCuda -j 8
+.EXAMPLE
+ ./build_dynamic_library.ps1 -g Ninja -t Release -c
 #>
 
 param(
@@ -31,7 +43,11 @@ param(
     [Alias('c')][switch]$Clean,
     [Alias('i')][switch]$Install,
     [Alias('p','prefix')][string]$InstallPrefix = "$PWD\install",
-    [Alias('b')][string]$BuildDir = "build"
+    [Alias('b')][string]$BuildDir = "build",
+    [switch]$EnableCuda,
+    [switch]$DisableTests,
+    [switch]$DisableExamples,
+    [Alias('j')][int]$Jobs = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,8 +56,14 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
-Write-Host "J2轨道传播器动态库构建脚本" -ForegroundColor Green
+Write-Host "=== J2 轨道传播器 Windows 构建脚本 ===" -ForegroundColor Green
 Write-Host "=" * 50 -ForegroundColor Green
+
+# 自动检测并行作业数
+if ($Jobs -eq 0) {
+    $Jobs = [Environment]::ProcessorCount
+    Write-Host "自动检测到 $Jobs 个处理器核心" -ForegroundColor Yellow
+}
 
 # 检查CMake是否可用
 try {
@@ -71,14 +93,22 @@ Write-Host "配置CMake项目..." -ForegroundColor Yellow
 Write-Host "构建类型: $BuildType" -ForegroundColor Cyan
 Write-Host "生成器: $Generator" -ForegroundColor Cyan
 Write-Host "构建目录: $BuildDir" -ForegroundColor Cyan
+Write-Host "并行作业数: $Jobs" -ForegroundColor Cyan
+Write-Host "CUDA 支持: $(if ($EnableCuda) { '启用' } else { '自动检测' })" -ForegroundColor Cyan
+Write-Host "构建测试: $(if ($DisableTests) { '禁用' } else { '启用' })" -ForegroundColor Cyan
+Write-Host "构建示例: $(if ($DisableExamples) { '禁用' } else { '启用' })" -ForegroundColor Cyan
 
 $cmakeArgs = @(
     "..",
     "-G", $Generator,
     "-DCMAKE_BUILD_TYPE=$BuildType",
-    "-DBUILD_EXAMPLES=ON",
-    "-DBUILD_TESTS=ON"
+    "-DBUILD_EXAMPLES=$(if ($DisableExamples) { 'OFF' } else { 'ON' })",
+    "-DBUILD_TESTS=$(if ($DisableTests) { 'OFF' } else { 'ON' })"
 )
+
+if ($EnableCuda) {
+    $cmakeArgs += "-DENABLE_CUDA=ON"
+}
 
 if ($Install) {
     $cmakeArgs += "-DCMAKE_INSTALL_PREFIX=$InstallPrefix"
@@ -97,7 +127,7 @@ try {
 # 构建项目
 Write-Host "构建项目..." -ForegroundColor Yellow
 try {
-    & cmake --build . --config $BuildType --parallel
+    & cmake --build . --config $BuildType --parallel $Jobs
     if ($LASTEXITCODE -ne 0) {
         throw "构建失败"
     }
