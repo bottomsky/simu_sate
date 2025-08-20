@@ -11,16 +11,57 @@
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
     <AssemblyTitle>J2 Orbit Propagator Library</AssemblyTitle>
     <AssemblyDescription>C# wrapper library for J2 orbit propagation using native C/C++ backend</AssemblyDescription>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <AssemblyVersion>1.0.0.1</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
     <Copyright>Copyright © 2024</Copyright>
     <Company>J2 Orbit Propagator</Company>
     <Product>J2 Orbit Propagator Library</Product>
+    
+    <!-- NuGet Package Configuration -->
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageId>J2Orbit.Library</PackageId>
+    <PackageVersion>1.0.1</PackageVersion>
+    <Authors>J2 Orbit Propagator Team</Authors>
+    <PackageDescription>C# wrapper library for J2 orbit propagation using native C/C++ backend. Includes cross-platform native libraries for Windows and Linux.</PackageDescription>
+    <PackageTags>orbit;propagation;j2;satellite;astronomy;physics;native</PackageTags>
+    <PackageProjectUrl>https://github.com/your-repo/j2-perturbation-orbit-propagator</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/your-repo/j2-perturbation-orbit-propagator</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
   
   <ItemGroup>
-    <None Include="..\j2_orbit_propagator.dll">
+    <!-- Native Libraries for Runtime -->
+    <None Include="..\..\..\bin\j2_orbit_propagator.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes\win-x64\native\j2_orbit_propagator.dll</PackagePath>
+    </None>
+    <None Include="..\..\..\bin\j2_orbit_propagator.lib">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes\win-x64\native\j2_orbit_propagator.lib</PackagePath>
+    </None>
+    <None Include="..\..\..\bin\libj2_orbit_propagator.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes\linux-x64\native\libj2_orbit_propagator.so</PackagePath>
+    </None>
+    <None Include="..\..\..\bin\libj2_orbit_propagator_static.a">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes\linux-x64\native\libj2_orbit_propagator_static.a</PackagePath>
+    </None>
+  </ItemGroup>
+  
+  <!-- Targets file for automatic native library copying -->
+  <ItemGroup>
+    <None Include="J2Orbit.Library.targets">
+      <Pack>true</Pack>
+      <PackagePath>build\J2Orbit.Library.targets</PackagePath>
     </None>
   </ItemGroup>
 </Project>

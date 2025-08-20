@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  
+  <!-- Define native library files for different platforms -->
+  <ItemGroup Condition="('$(RuntimeIdentifier)' == 'win-x64') OR ('$(RuntimeIdentifier)' == '' AND $([MSBuild]::IsOSPlatform('Windows')))">
+    <NativeLibrary Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\j2_orbit_propagator.dll">
+      <TargetPath>j2_orbit_propagator.dll</TargetPath>
+    </NativeLibrary>
+    <NativeLibrary Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\j2_orbit_propagator.lib">
+      <TargetPath>j2_orbit_propagator.lib</TargetPath>
+    </NativeLibrary>
+  </ItemGroup>
+  
+  <ItemGroup Condition="('$(RuntimeIdentifier)' == 'linux-x64') OR ('$(RuntimeIdentifier)' == '' AND $([MSBuild]::IsOSPlatform('Linux')))">
+    <NativeLibrary Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\libj2_orbit_propagator.so">
+      <TargetPath>libj2_orbit_propagator.so</TargetPath>
+    </NativeLibrary>
+    <NativeLibrary Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\libj2_orbit_propagator_static.a">
+      <TargetPath>libj2_orbit_propagator_static.a</TargetPath>
+    </NativeLibrary>
+  </ItemGroup>
+  
+  <!-- Copy native libraries to output directory -->
+  <Target Name="CopyNativeLibraries" BeforeTargets="Build">
+    <ItemGroup>
+      <ExistingNativeLibrary Include="@(NativeLibrary)" Condition="Exists('%(NativeLibrary.Identity)')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ExistingNativeLibrary)" DestinationFiles="@(ExistingNativeLibrary->'$(OutputPath)%(TargetPath)')" SkipUnchangedFiles="true" />
+    <Message Text="Copied native library: %(ExistingNativeLibrary.TargetPath)" Importance="normal" />
+  </Target>
+  
+  <!-- Ensure native libraries are included in publish output -->
+  <Target Name="PublishNativeLibraries" BeforeTargets="Publish">
+    <ItemGroup>
+      <ExistingNativeLibraryForPublish Include="@(NativeLibrary)" Condition="Exists('%(NativeLibrary.Identity)')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ExistingNativeLibraryForPublish)" DestinationFiles="@(ExistingNativeLibraryForPublish->'$(PublishDir)%(TargetPath)')" SkipUnchangedFiles="true" />
+    <Message Text="Published native library: %(ExistingNativeLibraryForPublish.TargetPath)" Importance="normal" />
+  </Target>
+  
+</Project>
