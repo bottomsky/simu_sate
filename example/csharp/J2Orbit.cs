@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace J2.Propagator
@@ -253,8 +254,100 @@ namespace J2.Propagator
         }
     }
 
+    /// <summary>
+    /// 跨平台动态库加载器，根据操作系统自动选择正确的动态库文件。
+    /// </summary>
+    internal static class NativeLibraryLoader
+    {
+        private static readonly string LibraryName;
+        private static readonly string LibraryPath;
+        
+        static NativeLibraryLoader()
+        {
+            // 根据操作系统选择正确的库文件名
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                LibraryName = "j2_orbit_propagator.dll";
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                LibraryName = "libj2_orbit_propagator.so";
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                LibraryName = "libj2_orbit_propagator.dylib";
+            }
+            else
+            {
+                throw new PlatformNotSupportedException($"Unsupported platform: {RuntimeInformation.OSDescription}");
+            }
+            
+            // 获取库文件的完整路径
+            var assemblyDir = Path.GetDirectoryName(typeof(NativeLibraryLoader).Assembly.Location);
+            LibraryPath = Path.Combine(assemblyDir ?? "", LibraryName);
+            
+            // 验证库文件是否存在
+            if (!File.Exists(LibraryPath))
+            {
+                throw new FileNotFoundException($"Native library not found: {LibraryPath}. Please ensure the library is copied to the output directory.");
+            }
+        }
+        
+        /// <summary>
+        /// 获取当前平台的动态库名称。
+        /// </summary>
+        public static string GetLibraryName() => LibraryName;
+        
+        /// <summary>
+        /// 获取当前平台的动态库完整路径。
+        /// </summary>
+        public static string GetLibraryPath() => LibraryPath;
+        
+        /// <summary>
+        /// 加载原生库。
+        /// </summary>
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr LoadLibrary(string lpFileName);
+        
+        [DllImport("libdl.so.2", SetLastError = true, CharSet = CharSet.Ansi)]
+        private static extern IntPtr dlopen(string filename, int flags);
+        
+        private static IntPtr _libraryHandle = IntPtr.Zero;
+        
+        /// <summary>
+        /// 确保原生库已加载。
+        /// </summary>
+        public static void EnsureLibraryLoaded()
+        {
+            if (_libraryHandle != IntPtr.Zero) return;
+            
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                _libraryHandle = LoadLibrary(LibraryPath);
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                const int RTLD_NOW = 2;
+                _libraryHandle = dlopen(LibraryPath, RTLD_NOW);
+            }
+            
+            if (_libraryHandle == IntPtr.Zero)
+            {
+                throw new DllNotFoundException($"Failed to load native library: {LibraryPath}");
+            }
+        }
+    }
+
     internal static class Native
     {
+        private static readonly string LibName = NativeLibraryLoader.GetLibraryName();
+        
+        static Native()
+        {
+            // 确保在使用 P/Invoke 之前加载正确的动态库
+            NativeLibraryLoader.EnsureLibraryLoaded();
+        }
+        
         // 原J2传播器函数 (保持原有)
         [DllImport("j2_orbit_propagator", EntryPoint = "j2_propagator_create", CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr j2_propagator_create(ref COrbitalElements elements);
