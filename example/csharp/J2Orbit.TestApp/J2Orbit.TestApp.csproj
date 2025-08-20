@@ -8,9 +8,5 @@
   <ItemGroup>
     <ProjectReference Include="..\J2Orbit.Library\J2Orbit.Library.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="..\j2_orbit_propagator.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+
 </Project>

@@ -23,7 +23,7 @@ namespace J2Orbit.TestApp
                     t = 0
                 };
 
-                using var propagator = new J2Orbit(elems);
+                using var propagator = new J2.Propagator.J2Orbit(elems);
                 var state = propagator.ElementsToState(elems);
                 var roundtrip = propagator.StateToElements(state, elems.t);
                 Console.WriteLine($"[J2Orbit] Roundtrip: a={roundtrip.a:F3}, e={roundtrip.e:E3}, i={roundtrip.i:E3}");

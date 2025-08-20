@@ -9,4 +9,19 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
+
+  <!-- 复制原生动态库文件到输出目录 -->
+  <ItemGroup>
+    <!-- Windows 动态库 -->
+    <None Include="..\..\bin\j2_orbit_propagator.dll" Condition="Exists('..\..\bin\j2_orbit_propagator.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>j2_orbit_propagator.dll</Link>
+    </None>
+    
+    <!-- Linux 动态库 -->
+    <None Include="..\..\bin\libj2_orbit_propagator.so" Condition="Exists('..\..\bin\libj2_orbit_propagator.so')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>libj2_orbit_propagator.so</Link>
+    </None>
+  </ItemGroup>
 </Project>
