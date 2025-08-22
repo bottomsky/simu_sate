@@ -24,4 +24,10 @@
       <Link>libj2_orbit_propagator.so</Link>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="J2Orbit.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="J2Orbit.Library\J2Orbit.Library.csproj" />
+  </ItemGroup>
 </Project>
