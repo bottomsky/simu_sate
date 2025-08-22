@@ -398,6 +398,32 @@ namespace J2.Propagator
         [DllImport("j2_orbit_propagator", EntryPoint = "j2_ecef_to_eci_velocity", CallingConvention = CallingConvention.Cdecl)]
         public static extern int j2_ecef_to_eci_velocity([In] double[] ecefPosition, [In] double[] ecefVelocity, double utcSeconds, [Out] double[] eciVelocity);
 
+        // 地理坐标与 ECEF/ECI 互转
+        [DllImport("j2_orbit_propagator", EntryPoint = "j2_ecef_to_geodetic", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int j2_ecef_to_geodetic([In] double[] ecefPosition, [Out] double[] geodeticLlh);
+
+        [DllImport("j2_orbit_propagator", EntryPoint = "j2_geodetic_to_ecef", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int j2_geodetic_to_ecef([In] double[] geodeticLlh, [Out] double[] ecefPosition);
+
+        [DllImport("j2_orbit_propagator", EntryPoint = "j2_eci_to_geodetic", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int j2_eci_to_geodetic([In] double[] eciPosition, double utcSeconds, [Out] double[] geodeticLlh);
+
+        [DllImport("j2_orbit_propagator", EntryPoint = "j2_geodetic_to_eci", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int j2_geodetic_to_eci([In] double[] geodeticLlh, double utcSeconds, [Out] double[] eciPosition);
+
+        // RTN/ECI conversions
+        [DllImport("j2_orbit_propagator", EntryPoint = "j2_rtn_to_eci_rotation", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int j2_rtn_to_eci_rotation([In] double[] rEci, [In] double[] vEci, [Out] double[] RRowMajor9);
+
+        [DllImport("j2_orbit_propagator", EntryPoint = "j2_eci_to_rtn_rotation", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int j2_eci_to_rtn_rotation([In] double[] rEci, [In] double[] vEci, [Out] double[] RRowMajor9);
+
+        [DllImport("j2_orbit_propagator", EntryPoint = "j2_eci_to_rtn_vector", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int j2_eci_to_rtn_vector([In] double[] rEci, [In] double[] vEci, [In] double[] vecEci, [Out] double[] vecRtn);
+
+        [DllImport("j2_orbit_propagator", EntryPoint = "j2_rtn_to_eci_vector", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int j2_rtn_to_eci_vector([In] double[] rEci, [In] double[] vEci, [In] double[] vecRtn, [Out] double[] vecEci);
+
         // === 星座传播器 C API 导入 ===
 
         [DllImport("j2_orbit_propagator", EntryPoint = "constellation_propagator_create", CallingConvention = CallingConvention.Cdecl)]
@@ -698,8 +724,11 @@ namespace J2.Propagator
         /// <returns>大地坐标（弧度经纬，高程米）。</returns>
         public static GeodeticCoord EciToGeodetic(double[] rEci, DateTime utc)
         {
-            var rEcef = EciToEcefPosition(rEci, utc);
-            return GeoConversion.EcefToGeodetic(rEcef[0], rEcef[1], rEcef[2]);
+            if (rEci == null || rEci.Length != 3) throw new ArgumentException("rEci must be length 3");
+            var llh = new double[3];
+            var t = TimeUtil.ToSecondsSinceJ2000(utc);
+            if (Native.j2_eci_to_geodetic(rEci, t, llh) != 0) throw new ConversionException("eci_to_geodetic failed");
+            return new GeodeticCoord { LatRad = llh[0], LonRad = llh[1], AltMeters = llh[2] };
         }
 
         // 便捷：Geodetic -> ECI
@@ -711,9 +740,11 @@ namespace J2.Propagator
         /// <returns>ECI 位置（米，长度为 3）。</returns>
         public static double[] GeodeticToEci(GeodeticCoord geo, DateTime utc)
         {
-            var (x, y, z) = GeoConversion.GeodeticToEcef(geo);
-            var rEcef = new[] { x, y, z };
-            return EcefToEciPosition(rEcef, utc);
+            var llh = new[] { geo.LatRad, geo.LonRad, geo.AltMeters };
+            var rEci = new double[3];
+            var t = TimeUtil.ToSecondsSinceJ2000(utc);
+            if (Native.j2_geodetic_to_eci(llh, t, rEci) != 0) throw new ConversionException("geodetic_to_eci failed");
+            return rEci;
         }
 
         /// <summary>

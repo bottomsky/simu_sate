@@ -174,6 +174,89 @@ J2_API int j2_eci_to_ecef_velocity(const double eci_position[3], const double ec
  */
 J2_API int j2_ecef_to_eci_velocity(const double ecef_position[3], const double ecef_velocity[3], double utc_seconds, double eci_velocity[3]);
 
+/**
+ * @brief ECEF 到大地坐标转换（WGS-84）。
+ *
+ * 输入 ECEF 笛卡尔坐标 (x, y, z)，输出为大地经纬高 [lat, lon, h]。
+ * - lat：大地纬度（弧度）
+ * - lon：大地经度（弧度，范围建议规范到 (-pi, pi]）
+ * - h  ：大地高（米）
+ *
+ * @param ecef_position ECEF 位置向量 [x, y, z] (m)
+ * @param geodetic_llh 输出的大地坐标 [lat(rad), lon(rad), h(m)]（长度为 3）
+ * @return 0 表示成功，非 0 表示失败（如输入指针为空）
+ */
+J2_API int j2_ecef_to_geodetic(const double ecef_position[3], double geodetic_llh[3]);
+
+/**
+ * @brief 大地坐标到 ECEF 转换（WGS-84）。
+ *
+ * 输入大地经纬高 [lat, lon, h]，输出 ECEF 笛卡尔坐标 (x, y, z)。
+ * - lat：大地纬度（弧度）
+ * - lon：大地经度（弧度）
+ * - h  ：大地高（米）
+ *
+ * @param geodetic_llh 大地坐标 [lat(rad), lon(rad), h(m)]（长度为 3）
+ * @param ecef_position 输出的 ECEF 位置向量 [x, y, z] (m)
+ * @return 0 表示成功，非 0 表示失败（如输入指针为空）
+ */
+J2_API int j2_geodetic_to_ecef(const double geodetic_llh[3], double ecef_position[3]);
+
+/**
+ * @brief ECI 到大地坐标转换（经 UTC 时间转换为 ECEF 后进行）。
+ *
+ * @param eci_position ECI 位置向量 [x, y, z] (m)
+ * @param utc_seconds UTC 时间（秒，自某参考时刻起）
+ * @param geodetic_llh 输出的大地坐标 [lat(rad), lon(rad), h(m)]（长度为 3）
+ * @return 0 表示成功，非 0 表示失败（如输入指针为空）
+ */
+J2_API int j2_eci_to_geodetic(const double eci_position[3], double utc_seconds, double geodetic_llh[3]);
+
+/**
+ * @brief 大地坐标到 ECI 转换（先转 ECEF，再结合 UTC 时间转 ECI）。
+ *
+ * @param geodetic_llh 大地坐标 [lat(rad), lon(rad), h(m)]（长度为 3）
+ * @param utc_seconds UTC 时间（秒，自某参考时刻起）
+ * @param eci_position 输出的 ECI 位置向量 [x, y, z] (m)
+ * @return 0 表示成功，非 0 表示失败（如输入指针为空）
+ */
+J2_API int j2_geodetic_to_eci(const double geodetic_llh[3], double utc_seconds, double eci_position[3]);
+
+// === RTN/ECI 坐标转换函数 ===
+/**
+ * @brief 计算 RTN->ECI 的旋转矩阵（行优先展平为 9 元素数组）。
+ */
+J2_API int j2_rtn_to_eci_rotation(const double r_eci[3], const double v_eci[3], double R_out[9]);
+
+/**
+ * @brief 计算 ECI->RTN 的旋转矩阵（行优先展平为 9 元素数组）。
+ * @param r_eci 卫星在 ECI 坐标系下的位置向量 [x, y, z] (m)
+ * @param v_eci 卫星在 ECI 坐标系下的速度向量 [vx, vy, vz] (m/s)
+ * @param R_out 输出的旋转矩阵（行优先，长度 9，对应 3x3 矩阵）
+ * @return 0 表示成功；非 0 表示失败（如 |r| 或 |r×v| 过小导致 RTN 框架未定义）
+ */
+J2_API int j2_eci_to_rtn_rotation(const double r_eci[3], const double v_eci[3], double R_out[9]);
+
+/**
+ * @brief 将向量从 ECI 坐标系转换到 RTN 坐标系。
+ * @param r_eci 卫星在 ECI 坐标系下的位置向量 [x, y, z] (m)
+ * @param v_eci 卫星在 ECI 坐标系下的速度向量 [vx, vy, vz] (m/s)
+ * @param vec_eci 输入的 ECI 向量（长度 3）
+ * @param vec_rtn 输出的 RTN 向量（长度 3）
+ * @return 0 表示成功；非 0 表示失败（如 |r| 或 |r×v| 过小导致 RTN 框架未定义）
+ */
+J2_API int j2_eci_to_rtn_vector(const double r_eci[3], const double v_eci[3], const double vec_eci[3], double vec_rtn[3]);
+
+/**
+ * @brief 将向量从 RTN 坐标系转换到 ECI 坐标系。
+ * @param r_eci 卫星在 ECI 坐标系下的位置向量 [x, y, z] (m)
+ * @param v_eci 卫星在 ECI 坐标系下的速度向量 [vx, vy, vz] (m/s)
+ * @param vec_rtn 输入的 RTN 向量（长度 3）
+ * @param vec_eci 输出的 ECI 向量（长度 3）
+ * @return 0 表示成功；非 0 表示失败（如 |r| 或 |r×v| 过小导致 RTN 框架未定义）
+ */
+J2_API int j2_rtn_to_eci_vector(const double r_eci[3], const double v_eci[3], const double vec_rtn[3], double vec_eci[3]);
+
 // === 工具函数 ===
 
 /**

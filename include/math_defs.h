@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <Eigen/Dense>
+#include <stdexcept>
 
 // =============================================================================
 // 数学常数定义
@@ -249,6 +250,148 @@ inline Eigen::Vector3d ecefToEciVelocity(const Eigen::Vector3d& r_ecef, const Ei
     
     // 速度转换：v_eci = R * (v_ecef + omega_earth × r_ecef)
     return R * (v_ecef + omega_earth.cross(r_ecef));
+}
+
+// =============================================================================
+// Geodetic/ECEF/ECI 互转函数
+// =============================================================================
+
+/**
+ * @brief 将 ECEF 坐标转换为大地坐标（Bowring 公式）。
+ * @param r_ecef ECEF 位置向量 (m)
+ * @return [lat(rad), lon(rad), h(m)] 按顺序组成的 3 元向量
+ */
+inline Eigen::Vector3d ecefToGeodeticVec(const Eigen::Vector3d& r_ecef) {
+    const double a = RE_EARTH;
+    const double f = 1.0 / RF_EARTH;
+    const double e2 = f * (2.0 - f);
+    const double b = a * (1.0 - f);
+    const double ep2 = (a * a - b * b) / (b * b);
+
+    const double x = r_ecef.x();
+    const double y = r_ecef.y();
+    const double z = r_ecef.z();
+
+    const double lon = std::atan2(y, x);
+    const double p = std::sqrt(x * x + y * y);
+
+    if (p < EPSILON) {
+        // 极点处特殊处理：经度约定为0
+        const double latPole = (z >= 0.0 ? 1.0 : -1.0) * M_PI_2;
+        const double Np = a / std::sqrt(1.0 - e2 * std::sin(latPole) * std::sin(latPole));
+        const double hPole = std::fabs(z) - Np * (1.0 - e2);
+        return Eigen::Vector3d(latPole, 0.0, hPole);
+    }
+
+    const double theta = std::atan2(z * a, p * b);
+    const double s = std::sin(theta);
+    const double c = std::cos(theta);
+    const double lat = std::atan2(z + ep2 * b * s * s * s, p - e2 * a * c * c * c);
+
+    const double sinLat = std::sin(lat);
+    const double N = a / std::sqrt(1.0 - e2 * sinLat * sinLat);
+    const double h = p / std::cos(lat) - N;
+
+    double lon_norm = lon;
+    if (lon_norm <= -M_PI) lon_norm += M_2PI;
+    if (lon_norm > M_PI) lon_norm -= M_2PI;
+
+    return Eigen::Vector3d(lat, lon_norm, h);
+}
+
+/**
+ * @brief 将大地坐标转换为 ECEF 坐标。
+ * @param lat 纬度 (rad)
+ * @param lon 经度 (rad)
+ * @param h 高程 (m)
+ * @return ECEF 位置向量 (m)
+ */
+inline Eigen::Vector3d geodeticToEcefVec(double lat, double lon, double h) {
+    const double a = RE_EARTH;
+    const double f = 1.0 / RF_EARTH;
+    const double e2 = f * (2.0 - f);
+
+    const double sinLat = std::sin(lat);
+    const double cosLat = std::cos(lat);
+    const double cosLon = std::cos(lon);
+    const double sinLon = std::sin(lon);
+
+    const double N = a / std::sqrt(1.0 - e2 * sinLat * sinLat);
+    const double x = (N + h) * cosLat * cosLon;
+    const double y = (N + h) * cosLat * sinLon;
+    const double z = (N * (1.0 - e2) + h) * sinLat;
+
+    return Eigen::Vector3d(x, y, z);
+}
+
+/**
+ * @brief 将 ECI 位置转换为大地坐标（内部经 ECEF）。
+ * @param r_eci ECI 位置向量 (m)
+ * @param time_j2000_seconds 自 J2000.0 起的秒数
+ * @return [lat(rad), lon(rad), h(m)]
+ */
+inline Eigen::Vector3d eciToGeodeticVec(const Eigen::Vector3d& r_eci, double time_j2000_seconds) {
+    Eigen::Vector3d r_ecef = eciToEcefPosition(r_eci, time_j2000_seconds);
+    return ecefToGeodeticVec(r_ecef);
+}
+
+/**
+ * @brief 将大地坐标转换为 ECI 位置（内部经 ECEF）。
+ * @param lat 纬度 (rad)
+ * @param lon 经度 (rad)
+ * @param h 高程 (m)
+ * @param time_j2000_seconds 自 J2000.0 起的秒数
+ * @return ECI 位置向量 (m)
+ */
+inline Eigen::Vector3d geodeticToEciVec(double lat, double lon, double h, double time_j2000_seconds) {
+    Eigen::Vector3d r_ecef = geodeticToEcefVec(lat, lon, h);
+    return ecefToEciPosition(r_ecef, time_j2000_seconds);
+}
+
+// =============================================================================
+// RTN/ECI 坐标转换函数
+// =============================================================================
+
+inline Eigen::Matrix3d rtnToEciRotationMatrix(const Eigen::Vector3d& r_eci,
+                                              const Eigen::Vector3d& v_eci) {
+    // RTN 基向量定义：
+    // R 轴：沿着位置向量 r
+    // T 轴：轨道切向方向（在轨道平面内，与速度投影一致）
+    // N 轴：轨道法线方向 r × v
+    Eigen::Vector3d R_hat = r_eci.normalized();
+    Eigen::Vector3d h = r_eci.cross(v_eci);
+    double h_norm = h.norm();
+    if (r_eci.norm() < EPSILON || h_norm < EPSILON) {
+        throw std::runtime_error("RTN frame undefined: |r| or |r×v| too small");
+    }
+    Eigen::Vector3d N_hat = h / h_norm;
+    Eigen::Vector3d T_hat = N_hat.cross(R_hat);
+
+    Eigen::Matrix3d Rot;
+    // 列为基向量（从 RTN 到 ECI）
+    Rot.col(0) = R_hat;
+    Rot.col(1) = T_hat;
+    Rot.col(2) = N_hat;
+    return Rot;
+}
+
+inline Eigen::Matrix3d eciToRtnRotationMatrix(const Eigen::Vector3d& r_eci,
+                                              const Eigen::Vector3d& v_eci) {
+    return rtnToEciRotationMatrix(r_eci, v_eci).transpose();
+}
+
+inline Eigen::Vector3d eciToRtnVector(const Eigen::Vector3d& r_eci,
+                                      const Eigen::Vector3d& v_eci,
+                                      const Eigen::Vector3d& vec_eci) {
+    Eigen::Matrix3d R_eci2rtn = eciToRtnRotationMatrix(r_eci, v_eci);
+    return R_eci2rtn * vec_eci;
+}
+
+inline Eigen::Vector3d rtnToEciVector(const Eigen::Vector3d& r_eci,
+                                      const Eigen::Vector3d& v_eci,
+                                      const Eigen::Vector3d& vec_rtn) {
+    Eigen::Matrix3d R_rtn2eci = rtnToEciRotationMatrix(r_eci, v_eci);
+    return R_rtn2eci * vec_rtn;
 }
 
 #endif // MATH_DEFS_H
