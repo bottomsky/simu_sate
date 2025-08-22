@@ -1,4 +1,55 @@
-# J2轨道传播器动态库构建总结
+# Dynamic Library Summary
+
+This document summarizes how the dynamic libraries are produced, named, and consumed across platforms. It also clarifies the unified output policy and how the C# example/test workflow finds the native binaries.
+
+## Output Location
+
+All compiled artifacts are unified into the repository-level `bin/` directory, regardless of whether you build via:
+- CMake directly
+- Unified script `scripts/build.ps1`
+- Legacy scripts (`build_dynamic_library.ps1`, `build_dynamic_library.sh`)
+- Docker builds
+- C# integrated script (`example/csharp/build_and_test_csharp.ps1`)
+
+The C# script copies native libraries from `bin/` to the managed projects' output folders at build/test time.
+
+## Library Names
+
+- Windows: `j2_orbit_propagator.dll`, import library `j2_orbit_propagator.lib`
+- Linux: `libj2_orbit_propagator.so`, static `libj2_orbit_propagator.a`
+- macOS: `libj2_orbit_propagator.dylib`, static `libj2_orbit_propagator.a`
+
+These names match the P/Invoke base name `j2_orbit_propagator` used by .NET bindings, enabling automatic platform mapping.
+
+## Consumers
+
+- C Example: Links against `bin/j2_orbit_propagator.*`
+- C#/.NET: P/Invoke (`DllImport("j2_orbit_propagator")`) expects the native library to be present in the runtime directory or on the system search path.
+- Tests: The unified test runner ensures test binaries and dependencies are discoverable under `bin/`.
+
+## Build Variants
+
+- Build types: Release, Debug, RelWithDebInfo, MinSizeRel
+- CUDA-enabled variants are produced when CUDA is detected or explicitly forced via `-EnableCuda`.
+
+## Clean and Reconfigure
+
+- `scripts/build.ps1 -Clean` removes build intermediates but keeps `build/CMakeLists.txt`.
+- `scripts/build.ps1 -Reconfigure` wipes CMake cache (`CMakeCache.txt` and `CMakeFiles/`) to force a fresh configure.
+
+## Docker Notes
+
+- Container builds write artifacts into host `./bin` via bind mounts.
+- See `docker/README-动态库路径说明.md` for additional path mapping and extraction options.
+
+## C# Integration Notes
+
+- `example/csharp/build_and_test_csharp.ps1` invokes the unified native build, then copies from `bin/`.
+- The script supports `-CleanNative`, `-NativeReconfigure`, `-NativeConfig` for controlling native build behavior from the managed side.
+
+## Versioning
+
+- Library versioning (if any) should be handled by CMake project version and optionally embedded into filenames as needed by downstream packaging systems.
 
 ## 概述
 

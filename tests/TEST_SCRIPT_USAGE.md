@@ -66,6 +66,20 @@ tests\build_and_run_tests.ps1
 - 所有测试: `tests\build-all`
 - 其他目标: `tests\build`
 
+## 与统一构建脚本/输出目录协作
+
+- 统一输出策略：项目所有动态/静态库与可执行文件统一收集到仓库根目录 `bin/`。
+- 原生构建入口：建议通过 `scripts/build.ps1` 进行 C++/CUDA 原生构建与清理；该脚本提供：
+  - `-Clean`：清理构建缓存，但保留 `build/CMakeLists.txt`
+  - `-Reconfigure`：移除 `CMakeCache.txt` 与 `CMakeFiles/` 以强制全量配置
+  - `-EnableCuda`：启用 CUDA 构建
+- 测试脚本关系：测试脚本会在 `tests\build-*` 目录下单独进行 CMake 配置与构建；它不会清理根构建目录。
+  - 若需彻底刷新根构建，再运行测试，建议先执行：
+    ```powershell
+    .\scripts\build.ps1 -Clean -Reconfigure -Config Release
+    ```
+  - Docker 流程：推荐使用挂载方式将容器 `/output` 直接同步到主机 `./bin`，详见 `docker/README-动态库路径说明.md`
+
 ## 常用使用示例
 
 ### 1. 基础用法
@@ -179,7 +193,37 @@ tests\build_and_run_tests.ps1
 - **构建目标**: `performance_tests`
 - **特性**: 启用 AVX2/FMA 优化
 
-## 常见问题解决
+## 与 C# 示例协作
+
+- C# 脚本：`example/csharp/build_and_test_csharp.ps1`
+  - 统一调用 `scripts/build.ps1` 构建原生库
+  - 参数：`-CleanNative`、`-NativeReconfigure`、`-NativeConfig Release|Debug|RelWithDebInfo|MinSizeRel`
+  - 从项目根 `bin/` 复制 `j2_orbit_propagator` 动态库到 C# 运行目录，完成 P/Invoke 运行时加载
+
+## 输出文件位置
+
+### 可执行文件
+- 单元测试: `tests\build-unit\unit\Release\unit_tests.exe`
+- 集成测试: `tests\build-integration\integration\Release\integration_tests.exe`
+- 性能测试: `tests\build-performance\performance\Release\performance_tests.exe`
+
+### 测试数据
+- 单元测试数据: `tests\data\multi_simulation_results_step_*.json`
+
+## 注意事项
+
+1. 管理员权限：通常不需要，除非 CUDA 安装需要特殊权限
+2. 路径要求：脚本必须从项目根目录调用
+3. 依赖检查：确保 CMake、编译器和必要的库已安装
+4. 并行构建：脚本默认使用系统可用的 CPU 核心数进行并行构建
+5. 清理建议：如需完全重新配置根构建，先执行 `scripts/build.ps1 -Clean -Reconfigure`；如需刷新测试构建，可删除对应的 `tests\build-*` 目录
+
+## 联系与支持
+
+如遇到问题，请检查：
+1. 系统环境是否满足要求
+2. 依赖库是否正确安装
+3. 构建日志中的具体错误信息
 
 ### 1. CUDA 编译错误
 ```

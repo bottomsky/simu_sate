@@ -39,8 +39,11 @@ j2-perturbation-orbit-propagator/
 │   ├── csharp/                    # C# .NET bindings and examples
 │   │   ├── J2Orbit.Library/        # .NET wrapper library
 │   │   ├── J2Orbit.TestApp/        # Simple C# demo
-│   │   └── MemoryLayoutTest/       # Memory layout tests
+│   │   ├── MemoryLayoutTest/       # Memory layout tests
+│   │   └── build_and_test_csharp.ps1 # C# build and test script
 │   └── python/                    # Python bindings (future)
+├── scripts/                    # Build automation scripts
+│   └── build.ps1                  # Unified C++ build script (with clean/reconfigure support)
 ├── docker/                     # Docker build support
 │   ├── Dockerfile.linux           # Linux build environment
 │   ├── Dockerfile.windows         # Windows build environment
@@ -48,8 +51,8 @@ j2-perturbation-orbit-propagator/
 │   └── build.ps1                  # Docker build script (Windows)
 ├── supabase/migrations/        # Database migrations (if applicable)
 ├── lib/eigen/                  # Eigen linear algebra library
-├── build_dynamic_library.ps1   # Windows build script
-├── build_dynamic_library.sh    # Linux/macOS build script
+├── build_dynamic_library.ps1   # Legacy Windows build script
+├── build_dynamic_library.sh    # Legacy Linux/macOS build script
 ├── docker-compose.yml          # Multi-platform Docker builds
 └── CROSS_PLATFORM_BUILD.md     # Detailed cross-platform build guide
 ```
@@ -75,30 +78,39 @@ j2-perturbation-orbit-propagator/
 - Optional: CUDA Toolkit 11.0+ for GPU acceleration
 - Optional: Docker for containerized builds
 
-### Quick Start
+### Quick Start - C++ Native Build
 
-#### Windows (PowerShell)
+#### Unified Build Script (Recommended)
+The project provides a unified build script with advanced cleaning and configuration options:
+
 ```powershell
-# Build dynamic library with default settings
-.\build_dynamic_library.ps1
+# Build with default settings (Release mode)
+.\scripts\build.ps1
 
-# Build with specific configuration
-.\build_dynamic_library.ps1 -BuildType Release -Generator "Visual Studio 17 2022" -EnableCuda
+# Build with cleaning build cache (preserves build/CMakeLists.txt)
+.\scripts\build.ps1 -Clean -Config Release
 
-# Clean build
-.\build_dynamic_library.ps1 -Clean
+# Build with full reconfiguration (removes CMakeCache.txt)
+.\scripts\build.ps1 -Clean -Config Release -Reconfigure
+
+# Debug build with CUDA enabled
+.\scripts\build.ps1 -Config Debug -EnableCuda
 ```
 
-#### Linux/macOS (Bash)
-```bash
-# Build dynamic library with default settings
-./build_dynamic_library.sh
+**Available Parameters:**
+- `-Config`: Build configuration (Release, Debug, RelWithDebInfo, MinSizeRel)
+- `-Clean`: Clean build directory while preserving `build/CMakeLists.txt`
+- `-Reconfigure`: Force CMake reconfiguration (removes CMakeCache.txt and CMakeFiles)
+- `-EnableCuda`: Force enable CUDA support
+- `-Generator`: Specify CMake generator (default: Visual Studio 17 2022)
 
-# Build with specific configuration
+#### Legacy Build Scripts
+```powershell
+# Windows (PowerShell) - Legacy
+.\build_dynamic_library.ps1 -BuildType Release -Generator "Visual Studio 17 2022" -EnableCuda
+
+# Linux/macOS (Bash) - Legacy
 ./build_dynamic_library.sh --build-type Release --generator Ninja --enable-cuda
-
-# Clean build
-./build_dynamic_library.sh --clean
 ```
 
 #### Docker Build (Recommended for Cross-Platform)
@@ -112,6 +124,33 @@ j2-perturbation-orbit-propagator/
 # Build for both platforms using Docker Compose
 docker-compose up
 ```
+
+### C# Example and Test
+
+The C# example provides an integrated workflow that automatically handles native library building:
+
+```powershell
+# Build C++ native library and run C# tests (Release mode)
+.\example\csharp\build_and_test_csharp.ps1 -BuildType Release
+
+# Clean native build and reconfigure before running C# tests
+.\example\csharp\build_and_test_csharp.ps1 -BuildType Release -CleanNative -NativeReconfigure
+
+# Use specific native build configuration
+.\example\csharp\build_and_test_csharp.ps1 -BuildType Release -NativeConfig Debug
+```
+
+**Available C# Script Parameters:**
+- `-BuildType`: C# build configuration (Release, Debug)
+- `-CleanNative`: Clean native build directory (preserves build/CMakeLists.txt)
+- `-NativeReconfigure`: Force native CMake reconfiguration
+- `-NativeConfig`: Native build configuration (inherits from BuildType if not specified)
+
+The C# script automatically:
+1. Calls the unified `scripts/build.ps1` to build native libraries
+2. Builds the C# projects (`J2Orbit.Library`, `MemoryLayoutTest`)
+3. Copies native libraries from `bin/` to test output directories
+4. Runs comprehensive memory layout and functionality tests
 
 ### Manual CMake Build
 ```bash
@@ -134,103 +173,26 @@ For detailed cross-platform build instructions and Docker support, see [CROSS_PL
 
 All compiled artifacts (dynamic libraries, static libraries, and executables) are unified into the `bin/` directory:
 
-- **Dynamic Libraries**: `j2_orbit_propagator_shared.dll` (Windows), `libj2_orbit_propagator_shared.so` (Linux), `libj2_orbit_propagator_shared.dylib` (macOS)
-- **Static Libraries**: `j2_orbit_propagator_static.lib` (Windows), `libj2_orbit_propagator_static.a` (Linux/macOS)
+- **Dynamic Libraries**: `j2_orbit_propagator.dll` (Windows), `libj2_orbit_propagator.so` (Linux), `libj2_orbit_propagator.dylib` (macOS)
+- **Static Libraries**: `j2_orbit_propagator.lib` (Windows), `libj2_orbit_propagator.a` (Linux/macOS)
 - **Executables**: Test programs, examples, and utilities
 
 This unified output structure is consistent across all build methods:
 - CMake builds (via CMakeLists.txt configuration)
-- Local build scripts (`build_dynamic_library.ps1`, `build_dynamic_library.sh`)
+- Unified build script (`scripts/build.ps1`)
+- Legacy build scripts (`build_dynamic_library.ps1`, `build_dynamic_library.sh`)
 - Docker builds (via volume mounting to `./bin`)
+- C# integrated builds (copies from `bin/` to runtime directories)
 
 The `bin/` directory is automatically created if it doesn't exist during the build process.
 
-## Usage Examples
+### Build Cache Management
 
-### C Language Example
-```c
-#include "j2_orbit_propagator.h"
-#include <stdio.h>
+The unified build script provides intelligent cache management:
 
-int main() {
-    // Create constellation propagator with J2000 epoch
-    ConstellationPropagatorHandle constellation = constellation_propagator_create(0.0);
-    
-    // Add a satellite with compact orbital elements
-    CCompactOrbitalElements elements = {
-        .a = 7000e3,                    // Semi-major axis (m)
-        .e = 0.001,                     // Eccentricity
-        .i = 98.0 * M_PI / 180.0,      // Inclination (rad)
-        .O = 0.0,                       // RAAN (rad)
-        .w = 0.0,                       // Argument of perigee (rad)
-        .M = 0.0                        // Mean anomaly (rad)
-    };
-    
-    int sat_id = constellation_propagator_add_satellite(constellation, &elements);
-    
-    // Propagate for 1 hour (3600 seconds)
-    constellation_propagator_propagate(constellation, 3600.0);
-    
-    // Get satellite state
-    CSatelliteState state;
-    constellation_propagator_get_satellite_state(constellation, sat_id, &state);
-    
-    printf("Position: [%.3f, %.3f, %.3f] km\n", 
-           state.r[0]/1000, state.r[1]/1000, state.r[2]/1000);
-    printf("Velocity: [%.3f, %.3f, %.3f] km/s\n", 
-           state.v[0]/1000, state.v[1]/1000, state.v[2]/1000);
-    
-    // Clean up
-    constellation_propagator_destroy(constellation);
-    return 0;
-}
-```
-
-### C# Example
-```csharp
-using J2.Propagator;
-using System;
-
-class Program
-{
-    static void Main()
-    {
-        // Create constellation propagator with J2000 epoch
-        var constellation = new ConstellationPropagator(0.0);
-        
-        // Check if CUDA is available
-        if (ConstellationPropagator.IsCudaAvailable())
-        {
-            Console.WriteLine("CUDA acceleration is available");
-        }
-        
-        // Add a satellite with compact orbital elements
-        var elements = new CCompactOrbitalElements
-        {
-            a = 7000e3,                           // Semi-major axis (m)
-            e = 0.001,                            // Eccentricity
-            i = 98.0 * Math.PI / 180.0,          // Inclination (rad)
-            O = 0.0,                              // RAAN (rad)
-            w = 0.0,                              // Argument of perigee (rad)
-            M = 0.0                               // Mean anomaly (rad)
-        };
-        
-        int satId = constellation.AddSatellite(elements);
-        
-        // Propagate for 1 hour (3600 seconds)
-        constellation.Propagate(3600.0);
-        
-        // Get satellite state
-        var state = constellation.GetSatelliteState(satId);
-        
-        Console.WriteLine($"Position: [{state.r[0]/1000:F3}, {state.r[1]/1000:F3}, {state.r[2]/1000:F3}] km");
-        Console.WriteLine($"Velocity: [{state.v[0]/1000:F3}, {state.v[1]/1000:F3}, {state.v[2]/1000:F3}] km/s");
-        
-        // Clean up
-        constellation.Dispose();
-    }
-}
-```
+- **`-Clean`**: Removes build artifacts but preserves `build/CMakeLists.txt` for faster subsequent builds
+- **`-Reconfigure`**: Performs full CMake reconfiguration by removing `CMakeCache.txt` and `CMakeFiles/`
+- **Automatic Detection**: The script automatically detects when reconfiguration is needed
 
 ### Running Examples
 
