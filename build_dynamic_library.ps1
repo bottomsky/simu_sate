@@ -15,6 +15,8 @@
  其他选项: "Ninja", "MinGW Makefiles", "Visual Studio 16 2019"等。
 .PARAMETER Clean
  在配置/构建前清理构建目录（别名: -c）。
+.PARAMETER CleanCache
+ 清理构建缓存，但保留 build/CMakeLists.txt 文件。
 .PARAMETER Install
  构建后执行安装（别名: -i）。
 .PARAMETER InstallPrefix
@@ -35,12 +37,15 @@
  ./build_dynamic_library.ps1 -config Debug -i -b build -EnableCuda -j 8
 .EXAMPLE
  ./build_dynamic_library.ps1 -g Ninja -t Release -c
+.EXAMPLE
+ ./build_dynamic_library.ps1 -CleanCache   # 清理缓存但保留 build/CMakeLists.txt
 #>
 
 param(
     [Alias('t','config')][ValidateSet('Debug','Release','RelWithDebInfo','MinSizeRel')][string]$BuildType = "Release",
     [Alias('g')][string]$Generator = "Visual Studio 17 2022",
     [Alias('c')][switch]$Clean,
+    [switch]$CleanCache,
     [Alias('i')][switch]$Install,
     [Alias('p','prefix')][string]$InstallPrefix = "$PWD\install",
     [Alias('b')][string]$BuildDir = "build",
@@ -55,6 +60,38 @@ $ErrorActionPreference = "Stop"
 # 获取脚本所在目录
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
+
+# 清理构建缓存（保留 build/CMakeLists.txt）
+function Clean-BuildCache {
+  <#
+  .SYNOPSIS
+    清理构建目录缓存，同时保留 build/CMakeLists.txt。
+  .DESCRIPTION
+    删除构建目录下的所有文件和子目录，但不会删除顶层的 CMakeLists.txt 文件。
+  .PARAMETER BuildDir
+    要清理的构建目录路径。
+  .EXAMPLE
+    Clean-BuildCache -BuildDir build
+  #>
+  param([Parameter(Mandatory=$true)][string]$BuildDir)
+
+  if (-not (Test-Path -LiteralPath $BuildDir)) {
+    Write-Host "[CleanCache] 构建目录不存在，跳过: $BuildDir" -ForegroundColor Yellow
+    return
+  }
+
+  Write-Host "[CleanCache] 清理缓存，保留 $BuildDir/CMakeLists.txt" -ForegroundColor Cyan
+  Get-ChildItem -LiteralPath $BuildDir -Force | ForEach-Object {
+    if ($_.PSIsContainer) {
+      Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    } else {
+      if (-not ($_.Name -ieq 'CMakeLists.txt')) {
+        Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+      }
+    }
+  }
+  Write-Host "[CleanCache] 完成。" -ForegroundColor Green
+}
 
 Write-Host "=== J2 轨道传播器 Windows 构建脚本 ===" -ForegroundColor Green
 Write-Host "=" * 50 -ForegroundColor Green
@@ -74,11 +111,12 @@ try {
     exit 1
 }
 
-# 创建构建目录
-# 使用参数化的 BuildDir 以便与其他脚本统一
+# 创建/清理构建目录
 if ($Clean -and (Test-Path $BuildDir)) {
-    Write-Host "清理构建目录: $BuildDir" -ForegroundColor Yellow
+    Write-Host "清理构建目录(完全删除): $BuildDir" -ForegroundColor Yellow
     Remove-Item -Recurse -Force $BuildDir
+} elseif ($CleanCache) {
+    Clean-BuildCache -BuildDir $BuildDir
 }
 
 if (-not (Test-Path $BuildDir)) {
@@ -88,7 +126,7 @@ if (-not (Test-Path $BuildDir)) {
 
 Set-Location $BuildDir
 
-# 配置CMake
+# 配置CMake项目...
 Write-Host "配置CMake项目..." -ForegroundColor Yellow
 Write-Host "构建类型: $BuildType" -ForegroundColor Cyan
 Write-Host "生成器: $Generator" -ForegroundColor Cyan

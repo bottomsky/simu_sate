@@ -9,6 +9,7 @@ set -e  # Exit on any error
 BUILD_TYPE="Release"
 BUILD_DIR="build"
 CLEAN_BUILD=false
+CLEAN_CACHE=false
 INSTALL_BUILD=false
 ENABLE_CUDA=false
 ENABLE_TESTS=true
@@ -28,7 +29,8 @@ OPTIONS:
                            Default: Release
     -b, --build-dir DIR    Build directory path
                            Default: build
-    -c, --clean            Clean build directory before building
+    -c, --clean            Clean build directory before building (remove entire build dir)
+        --clean-cache      Clean build directory cache while preserving build/CMakeLists.txt
     -i, --install          Install after building
     -g, --generator GEN    CMake generator to use
                            Default: Unix Makefiles
@@ -41,7 +43,8 @@ OPTIONS:
 
 EXAMPLES:
     $0                                    # Basic build
-    $0 -t Debug -c                       # Clean debug build
+    $0 -t Debug -c                       # Clean debug build (remove build directory)
+    $0 --clean-cache                     # Clean cache but keep build/CMakeLists.txt
     $0 -b /tmp/j2_build --enable-cuda    # Build with CUDA in custom directory
     $0 -t Release -i -j 8                # Release build with install using 8 jobs
 
@@ -61,6 +64,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c|--clean)
             CLEAN_BUILD=true
+            shift
+            ;;
+        --clean-cache)
+            CLEAN_CACHE=true
             shift
             ;;
         -i|--install)
@@ -124,6 +131,7 @@ echo "CUDA enabled: $ENABLE_CUDA"
 echo "Tests enabled: $ENABLE_TESTS"
 echo "Examples enabled: $ENABLE_EXAMPLES"
 echo "Clean build: $CLEAN_BUILD"
+echo "Clean cache (preserve CMakeLists.txt): $CLEAN_CACHE"
 echo "Install: $INSTALL_BUILD"
 echo
 
@@ -131,6 +139,10 @@ echo
 if [ "$CLEAN_BUILD" = true ]; then
     echo "Cleaning build directory..."
     rm -rf "$BUILD_DIR"
+elif [ "$CLEAN_CACHE" = true ]; then
+    echo "Cleaning build cache (preserving CMakeLists.txt) in $BUILD_DIR ..."
+    mkdir -p "$BUILD_DIR"
+    find "$BUILD_DIR" -mindepth 1 -maxdepth 1 ! -name 'CMakeLists.txt' -exec rm -rf {} +
 fi
 
 # Create build directory
