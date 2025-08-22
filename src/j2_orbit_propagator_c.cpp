@@ -284,15 +284,154 @@ int j2_ecef_to_eci_velocity(const double ecef_position[3], const double ecef_vel
     if (ecef_position == nullptr || ecef_velocity == nullptr || eci_velocity == nullptr) {
         return -1;
     }
-    
     try {
         Eigen::Vector3d ecef_pos(ecef_position[0], ecef_position[1], ecef_position[2]);
         Eigen::Vector3d ecef_vel(ecef_velocity[0], ecef_velocity[1], ecef_velocity[2]);
         Eigen::Vector3d eci_vel = ecefToEciVelocity(ecef_pos, ecef_vel, utc_seconds);
-        
         eci_velocity[0] = eci_vel.x();
         eci_velocity[1] = eci_vel.y();
         eci_velocity[2] = eci_vel.z();
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+int j2_ecef_to_geodetic(const double ecef_position[3], double geodetic_llh[3]) {
+    if (ecef_position == nullptr || geodetic_llh == nullptr) {
+        return -1;
+    }
+    try {
+        Eigen::Vector3d ecef_pos(ecef_position[0], ecef_position[1], ecef_position[2]);
+        Eigen::Vector3d geo = ecefToGeodeticVec(ecef_pos);
+        geodetic_llh[0] = geo.x(); // lat (rad)
+        geodetic_llh[1] = geo.y(); // lon (rad)
+        geodetic_llh[2] = geo.z(); // h (m)
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+int j2_geodetic_to_ecef(const double geodetic_llh[3], double ecef_position[3]) {
+    if (geodetic_llh == nullptr || ecef_position == nullptr) {
+        return -1;
+    }
+    try {
+        Eigen::Vector3d geo(geodetic_llh[0], geodetic_llh[1], geodetic_llh[2]);
+        Eigen::Vector3d ecef = geodeticToEcefVec(geo);
+        ecef_position[0] = ecef.x();
+        ecef_position[1] = ecef.y();
+        ecef_position[2] = ecef.z();
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+int j2_eci_to_geodetic(const double eci_position[3], double utc_seconds, double geodetic_llh[3]) {
+    if (eci_position == nullptr || geodetic_llh == nullptr) {
+        return -1;
+    }
+    try {
+        Eigen::Vector3d eci_pos(eci_position[0], eci_position[1], eci_position[2]);
+        Eigen::Vector3d geo = eciToGeodeticVec(eci_pos, utc_seconds);
+        geodetic_llh[0] = geo.x();
+        geodetic_llh[1] = geo.y();
+        geodetic_llh[2] = geo.z();
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+int j2_geodetic_to_eci(const double geodetic_llh[3], double utc_seconds, double eci_position[3]) {
+    if (geodetic_llh == nullptr || eci_position == nullptr) {
+        return -1;
+    }
+    try {
+        Eigen::Vector3d geo(geodetic_llh[0], geodetic_llh[1], geodetic_llh[2]);
+        Eigen::Vector3d eci = geodeticToEciVec(geo, utc_seconds);
+        eci_position[0] = eci.x();
+        eci_position[1] = eci.y();
+        eci_position[2] = eci.z();
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+// === RTN/ECI 坐标转换函数实现 ===
+int j2_rtn_to_eci_rotation(const double r_eci[3], const double v_eci[3], double R_out[9]) {
+    if (r_eci == nullptr || v_eci == nullptr || R_out == nullptr) {
+        return -1;
+    }
+    try {
+        Eigen::Vector3d r(r_eci[0], r_eci[1], r_eci[2]);
+        Eigen::Vector3d v(v_eci[0], v_eci[1], v_eci[2]);
+        Eigen::Matrix3d R = rtnToEciRotationMatrix(r, v);
+        // 行优先输出
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+                R_out[i * 3 + j] = R(i, j);
+            }
+        }
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+int j2_eci_to_rtn_rotation(const double r_eci[3], const double v_eci[3], double R_out[9]) {
+    if (r_eci == nullptr || v_eci == nullptr || R_out == nullptr) {
+        return -1;
+    }
+    try {
+        Eigen::Vector3d r(r_eci[0], r_eci[1], r_eci[2]);
+        Eigen::Vector3d v(v_eci[0], v_eci[1], v_eci[2]);
+        Eigen::Matrix3d R = eciToRtnRotationMatrix(r, v);
+        // 行优先输出
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+                R_out[i * 3 + j] = R(i, j);
+            }
+        }
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+int j2_eci_to_rtn_vector(const double r_eci[3], const double v_eci[3], const double vec_eci[3], double vec_rtn[3]) {
+    if (r_eci == nullptr || v_eci == nullptr || vec_eci == nullptr || vec_rtn == nullptr) {
+        return -1;
+    }
+    try {
+        Eigen::Vector3d r(r_eci[0], r_eci[1], r_eci[2]);
+        Eigen::Vector3d v(v_eci[0], v_eci[1], v_eci[2]);
+        Eigen::Vector3d vec(vec_eci[0], vec_eci[1], vec_eci[2]);
+        Eigen::Vector3d out = eciToRtnVector(r, v, vec);
+        vec_rtn[0] = out.x();
+        vec_rtn[1] = out.y();
+        vec_rtn[2] = out.z();
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+int j2_rtn_to_eci_vector(const double r_eci[3], const double v_eci[3], const double vec_rtn[3], double vec_eci[3]) {
+    if (r_eci == nullptr || v_eci == nullptr || vec_rtn == nullptr || vec_eci == nullptr) {
+        return -1;
+    }
+    try {
+        Eigen::Vector3d r(r_eci[0], r_eci[1], r_eci[2]);
+        Eigen::Vector3d v(v_eci[0], v_eci[1], v_eci[2]);
+        Eigen::Vector3d vec(vec_rtn[0], vec_rtn[1], vec_rtn[2]);
+        Eigen::Vector3d out = rtnToEciVector(r, v, vec);
+        vec_eci[0] = out.x();
+        vec_eci[1] = out.y();
+        vec_eci[2] = out.z();
         return 0;
     } catch (const std::exception&) {
         return -1;
@@ -303,7 +442,6 @@ int j2_compute_gmst(double utc_seconds, double* gmst) {
     if (gmst == nullptr) {
         return -1;
     }
-    
     try {
         *gmst = computeGMST(utc_seconds);
         return 0;
@@ -313,11 +451,7 @@ int j2_compute_gmst(double utc_seconds, double* gmst) {
 }
 
 double j2_normalize_angle(double angle) {
-    try {
-        return normalizeAngle(angle);
-    } catch (const std::exception&) {
-        return angle; // 发生异常时返回输入角度
-    }
+    return normalizeAngle(angle);
 }
 
 } // extern "C"

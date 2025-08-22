@@ -343,4 +343,96 @@ namespace J2.Propagator
 
         ~ConstellationPropagator() { Dispose(); }
     }
+
+    /// <summary>
+    /// 提供 ECEF/ECI 与大地坐标之间的互转封装（调用原生库）。
+    /// </summary>
+    public static class GeoConversion
+    {
+        /// <summary>
+        /// 将 ECEF 笛卡尔坐标 (米) 转换为大地坐标 (纬度、经度为弧度，海拔为米)。
+        /// </summary>
+        /// <param name="ecef">长度为 3 的数组，依次为 [x, y, z]（单位：米）。</param>
+        /// <returns>长度为 3 的数组，依次为 [lat(rad), lon(rad), alt(m)]。</returns>
+        /// <exception cref="ArgumentNullException">当 <paramref name="ecef"/> 为 null 时抛出。</exception>
+        /// <exception cref="ArgumentException">当 <paramref name="ecef"/> 长度不为 3 时抛出。</exception>
+        /// <exception cref="ConversionException">当底层原生转换返回非 0 错误码时抛出。</exception>
+        public static double[] EcefToGeodetic(double[] ecef)
+        {
+            if (ecef == null) throw new ArgumentNullException(nameof(ecef));
+            if (ecef.Length != 3) throw new ArgumentException("ecef length must be 3", nameof(ecef));
+            var llh = new double[3];
+            int rc = j2_ecef_to_geodetic(ecef, llh);
+            if (rc != 0) throw new ConversionException($"j2_ecef_to_geodetic failed with code {rc}");
+            return llh;
+        }
+
+        /// <summary>
+        /// 将大地坐标 (纬度、经度为弧度，海拔为米) 转换为 ECEF 笛卡尔坐标 (米)。
+        /// </summary>
+        /// <param name="llh">长度为 3 的数组，依次为 [lat(rad), lon(rad), alt(m)]。</param>
+        /// <returns>长度为 3 的数组，依次为 [x, y, z]（单位：米）。</returns>
+        /// <exception cref="ArgumentNullException">当 <paramref name="llh"/> 为 null 时抛出。</exception>
+        /// <exception cref="ArgumentException">当 <paramref name="llh"/> 长度不为 3 时抛出。</exception>
+        /// <exception cref="ConversionException">当底层原生转换返回非 0 错误码时抛出。</exception>
+        public static double[] GeodeticToEcef(double[] llh)
+        {
+            if (llh == null) throw new ArgumentNullException(nameof(llh));
+            if (llh.Length != 3) throw new ArgumentException("llh length must be 3", nameof(llh));
+            var ecef = new double[3];
+            int rc = j2_geodetic_to_ecef(llh, ecef);
+            if (rc != 0) throw new ConversionException($"j2_geodetic_to_ecef failed with code {rc}");
+            return ecef;
+        }
+
+        /// <summary>
+        /// 将 ECI 位置向量 (米) 转换为给定 UTC 秒的地球固定大地坐标 (纬度、经度为弧度，海拔为米)。
+        /// </summary>
+        /// <param name="eci">长度为 3 的数组，依次为 [x, y, z]（ECI，单位：米）。</param>
+        /// <param name="utcSeconds">UTC 时间（秒），参考与底层库一致的历元（例如 J2000）。</param>
+        /// <returns>长度为 3 的数组，依次为 [lat(rad), lon(rad), alt(m)]。</returns>
+        /// <exception cref="ArgumentNullException">当 <paramref name="eci"/> 为 null 时抛出。</exception>
+        /// <exception cref="ArgumentException">当 <paramref name="eci"/> 长度不为 3 时抛出。</exception>
+        /// <exception cref="ConversionException">当底层原生转换返回非 0 错误码时抛出。</exception>
+        public static double[] EciToGeodetic(double[] eci, double utcSeconds)
+        {
+            if (eci == null) throw new ArgumentNullException(nameof(eci));
+            if (eci.Length != 3) throw new ArgumentException("eci length must be 3", nameof(eci));
+            var llh = new double[3];
+            int rc = j2_eci_to_geodetic(eci, utcSeconds, llh);
+            if (rc != 0) throw new ConversionException($"j2_eci_to_geodetic failed with code {rc}");
+            return llh;
+        }
+
+        /// <summary>
+        /// 将大地坐标 (纬度、经度为弧度，海拔为米) 转换为给定 UTC 秒的 ECI 位置向量 (米)。
+        /// </summary>
+        /// <param name="llh">长度为 3 的数组，依次为 [lat(rad), lon(rad), alt(m)]。</param>
+        /// <param name="utcSeconds">UTC 时间（秒），参考与底层库一致的历元（例如 J2000）。</param>
+        /// <returns>长度为 3 的数组，依次为 [x, y, z]（ECI，单位：米）。</returns>
+        /// <exception cref="ArgumentNullException">当 <paramref name="llh"/> 为 null 时抛出。</exception>
+        /// <exception cref="ArgumentException">当 <paramref name="llh"/> 长度不为 3 时抛出。</exception>
+        /// <exception cref="ConversionException">当底层原生转换返回非 0 错误码时抛出。</exception>
+        public static double[] GeodeticToEci(double[] llh, double utcSeconds)
+        {
+            if (llh == null) throw new ArgumentNullException(nameof(llh));
+            if (llh.Length != 3) throw new ArgumentException("llh length must be 3", nameof(llh));
+            var eci = new double[3];
+            int rc = j2_geodetic_to_eci(llh, utcSeconds, eci);
+            if (rc != 0) throw new ConversionException($"j2_geodetic_to_eci failed with code {rc}");
+            return eci;
+        }
+
+        [DllImport(Native.DllName, EntryPoint = "j2_ecef_to_geodetic", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int j2_ecef_to_geodetic([In] double[] ecefPosition, [Out] double[] geodeticLlh);
+
+        [DllImport(Native.DllName, EntryPoint = "j2_geodetic_to_ecef", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int j2_geodetic_to_ecef([In] double[] geodeticLlh, [Out] double[] ecefPosition);
+
+        [DllImport(Native.DllName, EntryPoint = "j2_eci_to_geodetic", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int j2_eci_to_geodetic([In] double[] eciPosition, double utcSeconds, [Out] double[] geodeticLlh);
+
+        [DllImport(Native.DllName, EntryPoint = "j2_geodetic_to_eci", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int j2_geodetic_to_eci([In] double[] geodeticLlh, double utcSeconds, [Out] double[] eciPosition);
+    }
 }
