@@ -33,8 +33,11 @@ function Ensure-Native-Build {
 function Build-CSharp {
     Push-Location $PSScriptRoot
     try {
-        dotnet build .\J2Orbit.csproj -c $BuildType | Write-Host
+        # 改为编译库项目，避免与独立的 J2Orbit.csproj 中重复类型发生潜在冲突
+        dotnet build .\J2Orbit.Library\J2Orbit.Library.csproj -c $BuildType | Write-Host
         dotnet build .\MemoryLayoutTest\MemoryLayoutTest.csproj -c $BuildType | Write-Host
+        # 如需构建示例应用，可取消注释下一行
+        # dotnet build .\J2Orbit.TestApp\J2Orbit.TestApp.csproj -c $BuildType | Write-Host
     } finally { Pop-Location }
 }
 
