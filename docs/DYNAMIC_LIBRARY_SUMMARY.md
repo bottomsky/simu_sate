@@ -185,7 +185,7 @@ build/Release/
 
 3. **C#使用**:
    ```powershell
-   ./example/build_and_run_csharp.ps1
+   ./scripts/example/csharp/build_and_test_csharp.ps1
    ```
 
 ### 集成到其他项目
