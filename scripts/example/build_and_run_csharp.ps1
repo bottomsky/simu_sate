@@ -44,7 +44,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $rootDir = Split-Path -Parent $scriptDir
 $buildReleaseDir = Join-Path $rootDir "build\Release"
 $sourceDllPath = Join-Path $buildReleaseDir "j2_orbit_propagator.dll"
-$buildLibraryScript = Join-Path $rootDir "build_dynamic_library.ps1"
+$buildLibraryScript = Join-Path $rootDir "scripts\build_dynamic_library.ps1"
 
 # 检查是否需要构建C++库
 if (-not (Test-Path $buildReleaseDir) -or -not (Test-Path $sourceDllPath)) {
