@@ -98,7 +98,7 @@ RUN $buildArgs = @(); \
     if ($env:ENABLE_CUDA -eq 'true') { $buildArgs += '-EnableCuda' }; \
     if ($env:ENABLE_TESTS -eq 'false') { $buildArgs += '-DisableTests' }; \
     if ($env:ENABLE_EXAMPLES -eq 'false') { $buildArgs += '-DisableExamples' }; \
-    & .\build_dynamic_library.ps1 @buildArgs
+    & .\scripts\build_dynamic_library.ps1 @buildArgs
 
 # Create output directory
 RUN New-Item -ItemType Directory -Path C:\output -Force

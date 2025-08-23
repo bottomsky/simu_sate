@@ -1,4 +1,4 @@
-﻿# Alpine Linux 构建脚本 (PowerShell 版本)
+# Alpine Linux 构建脚本 (PowerShell 版本)
 # 使用 prantlf/alpine-make-gcc:latest 基础镜像构建 J2 Orbit Propagator
 
 param(
