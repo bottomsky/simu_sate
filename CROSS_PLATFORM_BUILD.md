@@ -110,12 +110,18 @@ The C# script orchestrates native and managed builds:
 
 # Override native configuration
 ./example/csharp/build_and_test_csharp.ps1 -NativeConfig Debug
+
+# Select which C# app to run (default: MemoryLayoutTest)
+./example/csharp/build_and_test_csharp.ps1 -Run MemoryLayoutTest
+./example/csharp/build_and_test_csharp.ps1 -Run TestApp
+./example/csharp/build_and_test_csharp.ps1 -Run TestProject
+./example/csharp/build_and_test_csharp.ps1 -Run None   # build only, do not run
 ```
 
 Behavior:
 1. Invokes `scripts/build.ps1` to build native libs into `bin/`.
-2. Builds `J2Orbit.Library` and `MemoryLayoutTest`.
-3. Copies native libraries from `bin/` into test output folders to satisfy runtime loading.
+2. Builds `J2Orbit.Library` and, based on `-Run`, optionally builds one of `MemoryLayoutTest`, `TestApp`, or `TestProject`.
+3. If `-Run` is not `None`, copies native libraries from `bin/` into the selected app's output directory and runs it (default target is `MemoryLayoutTest`).
 
 ## Cleaning Strategy
 
@@ -136,3 +142,98 @@ All above are deposited into `bin/` for consistency across build methods.
 - If native library fails to load in C#, confirm the DLL/SO/DYLIB is present next to the executable or included in the system search path.
 - If switching generators or toolchains, prefer `-Clean -Reconfigure` to avoid stale cache issues.
 - CUDA builds require compatible GPU drivers; ensure `nvcc`/toolkit is installed and discoverable.
+
+<a id="validation-checklist"></a>
+## 验证清单（快速自检）
+
+以下命令默认在仓库根目录的 PowerShell 中执行（Windows 环境）。每条命令后列出关键“期望输出”片段，出现即视为通过。
+
+- C# 默认（不带 -Run，默认运行 MemoryLayoutTest）
+  - 命令：
+    ```powershell
+    ./example/csharp/build_and_test_csharp.ps1
+    ```
+  - 期望输出片段：
+    ```
+    All tests passed successfully!
+    ```
+
+- 指定运行 MemoryLayoutTest
+  - 命令：
+    ```powershell
+    ./example/csharp/build_and_test_csharp.ps1 -Run MemoryLayoutTest
+    ```
+  - 期望输出片段：
+    ```
+    All tests passed successfully!
+    ```
+
+- 指定运行 TestApp
+  - 命令：
+    ```powershell
+    ./example/csharp/build_and_test_csharp.ps1 -Run TestApp
+    ```
+  - 期望输出片段：
+    ```
+    [TestApp] All checks passed.
+    ```
+
+- 指定运行 TestProject
+  - 命令：
+    ```powershell
+    ./example/csharp/build_and_test_csharp.ps1 -Run TestProject
+    ```
+  - 期望输出片段：
+    ```
+    Hello, World!
+    ```
+
+- 仅构建，不运行 C# 应用
+  - 命令：
+    ```powershell
+    ./example/csharp/build_and_test_csharp.ps1 -Run None
+    ```
+  - 期望输出片段：
+    ```
+    Skipped running any C# app (-Run None)
+    ```
+  - 进一步检查（可选）：构建产物统一在 bin/ 目录，例如：
+    ```powershell
+    Test-Path -LiteralPath ./bin/j2_orbit_propagator.dll
+    ```
+    期望：返回 True。
+
+- 清理并重新配置原生构建（Debug）且不运行 C# 应用
+  - 命令：
+    ```powershell
+    ./example/csharp/build_and_test_csharp.ps1 -CleanNative -NativeReconfigure -NativeConfig Debug -Run None
+    ```
+  - 期望输出片段：
+    ```
+    Skipped running any C# app (-Run None)
+    ```
+
+- 运行过的 C# 应用输出目录包含原生库（自动复制）
+  - 命令：
+    ```powershell
+    $paths = @(
+      'example/csharp/J2Orbit.TestApp/bin/Release/net8.0/j2_orbit_propagator.dll',
+      'example/csharp/MemoryLayoutTest/bin/Release/net8.0/j2_orbit_propagator.dll',
+      'example/csharp/TestProject/bin/Release/net9.0/j2_orbit_propagator.dll'
+    )
+    $paths | ForEach-Object { "$_ => " + (Test-Path -LiteralPath $_) }
+    ```
+  - 期望输出片段：三条路径均为：
+    ```
+    => True
+    ```
+
+- C++ 统一构建脚本（产物统一收集至 bin/，支持清理与重配）
+  - 命令：
+    ```powershell
+    ./scripts/build.ps1 -Clean -Reconfigure -Config Release
+    ```
+  - 期望输出片段（收尾）：
+    ```
+    Build completed. Artifacts are available in: ...\bin
+    ```
