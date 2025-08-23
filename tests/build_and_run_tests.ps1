@@ -1,4 +1,4 @@
-﻿param(
+param(
   [Alias('c')]
   [string]$Config = "Release",
 

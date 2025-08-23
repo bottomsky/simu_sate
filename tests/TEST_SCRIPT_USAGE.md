@@ -79,6 +79,7 @@ tests\build_and_run_tests.ps1
     .\scripts\build.ps1 -Clean -Reconfigure -Config Release
     ```
   - Docker 流程：推荐使用挂载方式将容器 `/output` 直接同步到主机 `./bin`，详见 `docker/README-动态库路径说明.md`
+  - 端到端验证清单：参见 [CROSS_PLATFORM_BUILD.md — 验证清单（快速自检）](../CROSS_PLATFORM_BUILD.md#validation-checklist)
 
 ## 常用使用示例
 
