@@ -107,19 +107,19 @@ The project provides a unified build script with advanced cleaning and configura
 #### Legacy Build Scripts
 ```powershell
 # Windows (PowerShell) - Legacy
-.\build_dynamic_library.ps1 -BuildType Release -Generator "Visual Studio 17 2022" -EnableCuda
+.\scripts\build_dynamic_library.ps1 -BuildType Release -Generator "Visual Studio 17 2022" -EnableCuda
 
 # Linux/macOS (Bash) - Legacy
-./build_dynamic_library.sh --build-type Release --generator Ninja --enable-cuda
+./scripts/build_dynamic_library.sh --build-type Release --generator Ninja --enable-cuda
 ```
 
 #### Docker Build (Recommended for Cross-Platform)
 ```bash
 # Build for Linux
-./docker/build.sh --target linux --build-type Release
+./scripts/docker/build.sh --target linux --build-type Release
 
 # Build for Windows (requires Windows containers)
-./docker/build.ps1 -Target windows -BuildType Release
+./scripts/docker/build.ps1 -Target windows -BuildType Release
 
 # Build for both platforms using Docker Compose
 docker-compose up
@@ -131,13 +131,13 @@ The C# example provides an integrated workflow that automatically handles native
 
 ```powershell
 # Build C++ native library and run C# tests (Release mode)
-.\example\csharp\build_and_test_csharp.ps1 -BuildType Release
+.\scripts\example\csharp\build_and_test_csharp.ps1 -BuildType Release
 
 # Clean native build and reconfigure before running C# tests
-.\example\csharp\build_and_test_csharp.ps1 -BuildType Release -CleanNative -NativeReconfigure
+.\scripts\example\csharp\build_and_test_csharp.ps1 -BuildType Release -CleanNative -NativeReconfigure
 
 # Use specific native build configuration
-.\example\csharp\build_and_test_csharp.ps1 -BuildType Release -NativeConfig Debug
+.\scripts\example\csharp\build_and_test_csharp.ps1 -BuildType Release -NativeConfig Debug
 ```
 
 **Available C# Script Parameters:**
@@ -231,19 +231,19 @@ The project includes comprehensive testing with three main categories:
 #### Quick Test Execution (Windows)
 ```powershell
 # Run all tests with default configuration
-.\tests\build_and_run_tests.ps1
+.\scripts\tests\build_and_run_tests.ps1
 
 # Run specific test types
-.\tests\build_and_run_tests.ps1 -TestTargets "unit,integration"
+.\scripts\tests\build_and_run_tests.ps1 -TestTargets "unit,integration"
 
 # Run with specific build configuration
-.\tests\build_and_run_tests.ps1 -BuildType Release -BuildDir "build"
+.\scripts\tests\build_and_run_tests.ps1 -BuildType Release -BuildDir "build"
 
 # Run with CUDA enabled
-.\tests\build_and_run_tests.ps1 -EnableCuda
+.\scripts\tests\build_and_run_tests.ps1 -EnableCuda
 
 # Run with verbose output
-.\tests\build_and_run_tests.ps1 -Verbose
+.\scripts\tests\build_and_run_tests.ps1 -Verbose
 ```
 
 #### Manual Test Execution
@@ -312,8 +312,8 @@ For CI/CD pipelines, use:
 # Example GitHub Actions step
 - name: Run Tests
   run: |
-    ./build_dynamic_library.ps1 -BuildType Release
-    ./tests/build_and_run_tests.ps1 -BuildType Release -Quiet
+    ./scripts/build_dynamic_library.ps1 -BuildType Release
+    ./scripts/tests/build_and_run_tests.ps1 -BuildType Release -Quiet
 ```
 
 ## Algorithm Optimizations
@@ -370,128 +370,12 @@ The project provides comprehensive .NET bindings for easy integration with C# ap
 # Navigate to C# example directory
 cd example/csharp
 
-# Build native library and run all C# tests
+# Build native library and run default C# target (MemoryLayoutTest)
 ./build_and_test_csharp.ps1
 ```
 
-This script will:
-1. Build the native dynamic library (`j2_orbit_propagator.dll`)
-2. Build the `J2Orbit.Library` wrapper
-3. Run `MemoryLayoutTest` for regression testing
-4. Run `J2Orbit.TestApp` for functionality demonstration
 
-#### Manual Build Process
+## 验证清单（快速自检）
 
-1. **Build Native Library**:
-```powershell
-# Using project build script (Windows)
-./build_dynamic_library.ps1 -BuildType Release
-
-# Or using CMake directly
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --config Release
-```
-
-2. **Build and Run .NET Projects**:
-```powershell
-# Build wrapper library
-dotnet build example/csharp/J2Orbit.Library/J2Orbit.Library.csproj -c Release
-
-# Build and run tests
-dotnet build example/csharp/MemoryLayoutTest/MemoryLayoutTest.csproj -c Release
-dotnet run --project example/csharp/MemoryLayoutTest -c Release
-
-# Build and run demo application
-dotnet build example/csharp/J2Orbit.TestApp/J2Orbit.TestApp.csproj -c Release
-dotnet run --project example/csharp/J2Orbit.TestApp -c Release
-```
-
-### Cross-Platform Library Loading
-The P/Invoke bindings use the base name `j2_orbit_propagator`, which automatically maps to:
-- **Windows**: `j2_orbit_propagator.dll`
-- **Linux**: `libj2_orbit_propagator.so`
-- **macOS**: `libj2_orbit_propagator.dylib`
-
-Ensure the native library is in the executable output directory or system search path (`PATH`).
-
-### Advanced Usage Example
-```csharp
-using J2.Propagator;
-using System;
-using System.Collections.Generic;
-
-class AdvancedExample
-{
-    static void Main()
-    {
-        // Check CUDA availability
-        bool cudaAvailable = ConstellationPropagator.IsCudaAvailable();
-        Console.WriteLine($"CUDA Available: {cudaAvailable}");
-        
-        // Create constellation with automatic CUDA detection
-        using var constellation = new ConstellationPropagator(0.0);
-        
-        // Add multiple satellites
-        var elements = new CCompactOrbitalElements
-        {
-            a = 7000e3,
-            e = 0.001,
-            i = 98.0 * Math.PI / 180.0,
-            O = 0.0,
-            w = 0.0,
-            M = 0.0
-        };
-        
-        // Add constellation of satellites
-        var satelliteIds = new List<int>();
-        for (int i = 0; i < 100; i++)
-        {
-            elements.M = i * 2.0 * Math.PI / 100.0; // Distribute in orbit
-            satelliteIds.Add(constellation.AddSatellite(elements));
-        }
-        
-        // Propagate constellation
-        constellation.Propagate(3600.0); // 1 hour
-        
-        // Get states for all satellites
-        foreach (int satId in satelliteIds)
-        {
-            var state = constellation.GetSatelliteState(satId);
-            double posMagnitude = Math.Sqrt(state.r[0]*state.r[0] + state.r[1]*state.r[1] + state.r[2]*state.r[2]);
-            Console.WriteLine($"Satellite {satId}: Position magnitude = {posMagnitude/1000:F3} km");
-        }
-    }
-}
-```
-
-### Troubleshooting
-
-#### Common Issues
-- **"Unable to load DLL 'j2_orbit_propagator' (0x8007007E)"**:
-  - Verify DLL exists in output directory and matches process architecture (x64)
-  - Add DLL directory to `PATH` or place in same directory as executable
-  - Ensure all dependencies (like CUDA runtime) are available
-
-- **"Entry point not found"**:
-  - Ensure native library is built with latest code
-  - Run `./build_and_test_csharp.ps1` for complete rebuild and test
-
-- **CUDA Not Available**:
-  - `ConstellationPropagator.IsCudaAvailable()` returning `false` is expected without proper CUDA installation
-  - Install CUDA Toolkit 11.0+ and ensure GPU drivers are up to date
-
-#### Performance Tips
-- Use `using` statements or explicit `Dispose()` calls for proper resource cleanup
-- For large constellations (>1000 satellites), CUDA acceleration provides significant performance benefits
-- Consider batch operations when adding multiple satellites
-
-## Additional Documentation
-
-- **[Cross-Platform Build Guide](CROSS_PLATFORM_BUILD.md)**: Comprehensive guide for building on Linux, Windows, and using Docker
-- **[Test Script Usage](tests/TEST_SCRIPT_USAGE.md)**: Detailed documentation for the PowerShell test execution script
-- **[C Example](example/c_example.c)**: Complete C language usage example
-- **[C# Integration](example/csharp/)**: .NET bindings and examples
-
-## License
-MIT License
+为保持文档单一来源，本章节已迁移至 CROSS_PLATFORM_BUILD.md。请参见此处获取最新清单：
+- [CROSS_PLATFORM_BUILD.md — 验证清单（快速自检）](./CROSS_PLATFORM_BUILD.md#validation-checklist)
