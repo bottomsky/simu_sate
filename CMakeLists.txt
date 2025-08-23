@@ -33,18 +33,16 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 设置输出目录 - 所有编译产物统一输出到 bin 目录
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin)
+# 旧版 bin 输出目录配置已移除，统一使用下方的 build/$<CONFIG> 规则以支持 Debug/Release 分目录
 
-# 为不同配置类型设置输出目录
-foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
-    string(TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_CURRENT_SOURCE_DIR}/bin)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_CURRENT_SOURCE_DIR}/bin)
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_CURRENT_SOURCE_DIR}/bin)
-endforeach()
+# 设置输出目录 - 统一到 build 下的配置子目录（如 build/Debug、build/Release）
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
+
+# 说明：使用生成器表达式 $<CONFIG> 自动按配置(Debug/Release/...)分目录，无需手动循环处理多配置生成器。
+
+# 已移除针对多配置生成器的逐配置 bin 覆盖；使用生成器表达式自动按配置分目录（见上方 CMAKE_*_OUTPUT_DIRECTORY 设置）
 
 # 设置编译选项（仅针对C++源文件，避免影响CUDA编译）
 if(MSVC)

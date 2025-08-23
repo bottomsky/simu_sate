@@ -32,13 +32,13 @@
 .PARAMETER Jobs
  并行构建作业数（别名: -j）。默认: 自动检测处理器核心数。
 .EXAMPLE
- ./build_dynamic_library.ps1 -t Release -g "Visual Studio 17 2022" -c -i -p .\install
-.EXAMPLE
- ./build_dynamic_library.ps1 -config Debug -i -b build -EnableCuda -j 8
-.EXAMPLE
- ./build_dynamic_library.ps1 -g Ninja -t Release -c
-.EXAMPLE
- ./build_dynamic_library.ps1 -CleanCache   # 清理缓存但保留 build/CMakeLists.txt
+#  .\scripts\build_dynamic_library.ps1 -t Release -g "Visual Studio 17 2022" -c -i -p .\install
+# .EXAMPLE
+#  .\scripts\build_dynamic_library.ps1 -config Debug -i -b build -EnableCuda -j 8
+# .EXAMPLE
+#  .\scripts\build_dynamic_library.ps1 -g Ninja -t Release -c
+# .EXAMPLE
+#  .\scripts\build_dynamic_library.ps1 -CleanCache   # 清理缓存但保留 build/CMakeLists.txt
 #>
 
 param(
