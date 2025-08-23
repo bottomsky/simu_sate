@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # PowerShell脚本：编译并运行C#绑定示例
 
 param(
