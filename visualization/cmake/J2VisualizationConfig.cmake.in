@@ -1,0 +1,57 @@
+# J2 轨道可视化模块配置文件
+# 此文件用于其他项目查找和使用 J2 可视化库
+
+@PACKAGE_INIT@
+
+# 检查必需的组件
+include(CMakeFindDependencyMacro)
+
+# 查找依赖包
+find_dependency(Vulkan REQUIRED)
+find_dependency(glfw3 REQUIRED)
+find_dependency(glm REQUIRED)
+
+# 包含目标文件
+include("${CMAKE_CURRENT_LIST_DIR}/J2VisualizationTargets.cmake")
+
+# 检查目标是否存在
+check_required_components(J2Visualization)
+
+# 设置变量
+set(J2Visualization_FOUND TRUE)
+set(J2Visualization_VERSION @PROJECT_VERSION@)
+set(J2Visualization_INCLUDE_DIRS "@PACKAGE_CMAKE_INSTALL_PREFIX@/include/j2_visualization")
+set(J2Visualization_LIBRARIES J2::j2_visualization)
+
+# 提供便利宏
+macro(j2_visualization_add_shaders target)
+    # 查找着色器编译器
+    find_program(GLSLC glslc HINTS ${Vulkan_TOOLS_DIR} PATHS ENV VULKAN_SDK PATH_SUFFIXES bin)
+    
+    if(NOT GLSLC)
+        message(WARNING "glslc not found. Shaders will not be compiled automatically.")
+    else()
+        # 编译着色器的宏实现
+        foreach(shader ${ARGN})
+            get_filename_component(shader_name ${shader} NAME)
+            set(shader_output "${CMAKE_BINARY_DIR}/shaders/${shader_name}.spv")
+            
+            add_custom_command(
+                OUTPUT ${shader_output}
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/shaders"
+                COMMAND ${GLSLC} ${shader} -o ${shader_output}
+                DEPENDS ${shader}
+                COMMENT "Compiling shader ${shader_name}"
+            )
+            
+            target_sources(${target} PRIVATE ${shader_output})
+        endforeach()
+    endif()
+endmacro()
+
+# 显示找到的信息
+if(NOT J2Visualization_FIND_QUIETLY)
+    message(STATUS "Found J2Visualization: ${J2Visualization_VERSION}")
+    message(STATUS "J2Visualization include dirs: ${J2Visualization_INCLUDE_DIRS}")
+    message(STATUS "J2Visualization libraries: ${J2Visualization_LIBRARIES}")
+endif()
