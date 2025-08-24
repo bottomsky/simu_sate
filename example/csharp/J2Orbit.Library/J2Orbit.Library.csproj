@@ -35,22 +35,22 @@
   
   <ItemGroup>
     <!-- Native Libraries for Runtime -->
-    <None Include="..\..\..\bin\j2_orbit_propagator.dll">
+    <None Include="..\..\..\build\$(Configuration)\j2_orbit_propagator.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Pack>true</Pack>
       <PackagePath>runtimes\win-x64\native\j2_orbit_propagator.dll</PackagePath>
     </None>
-    <None Include="..\..\..\bin\j2_orbit_propagator.lib">
+    <None Include="..\..\..\build\$(Configuration)\j2_orbit_propagator.lib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Pack>true</Pack>
       <PackagePath>runtimes\win-x64\native\j2_orbit_propagator.lib</PackagePath>
     </None>
-    <None Include="..\..\..\bin\libj2_orbit_propagator.so">
+    <None Include="..\..\..\build\$(Configuration)\libj2_orbit_propagator.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Pack>true</Pack>
       <PackagePath>runtimes\linux-x64\native\libj2_orbit_propagator.so</PackagePath>
     </None>
-    <None Include="..\..\..\bin\libj2_orbit_propagator_static.a">
+    <None Include="..\..\..\build\$(Configuration)\libj2_orbit_propagator_static.a">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Pack>true</Pack>
       <PackagePath>runtimes\linux-x64\native\libj2_orbit_propagator_static.a</PackagePath>
