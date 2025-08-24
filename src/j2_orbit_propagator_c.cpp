@@ -318,8 +318,7 @@ int j2_geodetic_to_ecef(const double geodetic_llh[3], double ecef_position[3]) {
         return -1;
     }
     try {
-        Eigen::Vector3d geo(geodetic_llh[0], geodetic_llh[1], geodetic_llh[2]);
-        Eigen::Vector3d ecef = geodeticToEcefVec(geo);
+        Eigen::Vector3d ecef = geodeticToEcefVec(geodetic_llh[0], geodetic_llh[1], geodetic_llh[2]);
         ecef_position[0] = ecef.x();
         ecef_position[1] = ecef.y();
         ecef_position[2] = ecef.z();
@@ -350,8 +349,7 @@ int j2_geodetic_to_eci(const double geodetic_llh[3], double utc_seconds, double 
         return -1;
     }
     try {
-        Eigen::Vector3d geo(geodetic_llh[0], geodetic_llh[1], geodetic_llh[2]);
-        Eigen::Vector3d eci = geodeticToEciVec(geo, utc_seconds);
+        Eigen::Vector3d eci = geodeticToEciVec(geodetic_llh[0], geodetic_llh[1], geodetic_llh[2], utc_seconds);
         eci_position[0] = eci.x();
         eci_position[1] = eci.y();
         eci_position[2] = eci.z();
