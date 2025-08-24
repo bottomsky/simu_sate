@@ -16,10 +16,14 @@ This project implements high-performance orbit propagators for satellite traject
 ## Project Structure
 ```
 j2-perturbation-orbit-propagator/
-├── bin/                        # Build output directory (all compiled artifacts)
-│   ├── *.dll/*.so/*.dylib         # Dynamic libraries
-│   ├── *.lib/*.a                  # Static libraries
-│   └── *.exe                      # Executable files
+├── build/                      # Build output directory (all compiled artifacts)
+│   ├── Release/                   # Release build artifacts
+│   │   ├── *.dll/*.so/*.dylib        # Dynamic libraries
+│   │   ├── *.lib/*.a                 # Static libraries
+│   │   └── *.exe                     # Executable files
+│   ├── Debug/                     # Debug build artifacts
+│   └── CMakeLists.txt             # Build configuration
+├── build/                      # Build output directory
 ├── include/                    # Header files
 │   ├── j2_orbit_propagator.h      # Single satellite propagator
 │   ├── constellation_propagator.h  # Large-scale constellation propagator
@@ -51,10 +55,10 @@ j2-perturbation-orbit-propagator/
 │   └── build.ps1                  # Docker build script (Windows)
 ├── supabase/migrations/        # Database migrations (if applicable)
 ├── lib/eigen/                  # Eigen linear algebra library
-├── build_dynamic_library.ps1   # Legacy Windows build script
-├── build_dynamic_library.sh    # Legacy Linux/macOS build script
+
+
 ├── docker-compose.yml          # Multi-platform Docker builds
-└── CROSS_PLATFORM_BUILD.md     # Detailed cross-platform build guide
+└── docs/CROSS_PLATFORM_BUILD.md     # Detailed cross-platform build guide
 ```
 
 ## Performance Comparison
@@ -149,7 +153,7 @@ The C# example provides an integrated workflow that automatically handles native
 The C# script automatically:
 1. Calls the unified `scripts/build.ps1` to build native libraries
 2. Builds the C# projects (`J2Orbit.Library`, `MemoryLayoutTest`)
-3. Copies native libraries from `bin/` to test output directories
+3. Copies native libraries from `build/<Config>/` to test output directories
 4. Runs comprehensive memory layout and functionality tests
 
 ### Manual CMake Build
@@ -167,24 +171,26 @@ cmake --build . --config Release
 - `integration_tests`: Integration test suite
 - `performance_tests`: Performance benchmarks
 
-For detailed cross-platform build instructions and Docker support, see [CROSS_PLATFORM_BUILD.md](CROSS_PLATFORM_BUILD.md).
+For detailed cross-platform build instructions and Docker support, see [CROSS_PLATFORM_BUILD.md](docs/CROSS_PLATFORM_BUILD.md).
 
 ### Build Output Directory
 
-All compiled artifacts (dynamic libraries, static libraries, and executables) are unified into the `bin/` directory:
+Primary build artifacts are located under `build/<Config>/` (e.g., `build/Release/`, `build/Debug/`):
 
-- **Dynamic Libraries**: `j2_orbit_propagator.dll` (Windows), `libj2_orbit_propagator.so` (Linux), `libj2_orbit_propagator.dylib` (macOS)
-- **Static Libraries**: `j2_orbit_propagator.lib` (Windows), `libj2_orbit_propagator.a` (Linux/macOS)
-- **Executables**: Test programs, examples, and utilities
+- Dynamic Libraries: `j2_orbit_propagator.dll` (Windows), `libj2_orbit_propagator.so` (Linux), `libj2_orbit_propagator.dylib` (macOS)
+- Static Libraries: `j2_orbit_propagator.lib` (Windows), `libj2_orbit_propagator.a` (Linux/macOS)
+- Executables: Test programs, examples, and utilities
+
+All build artifacts are consistently located in `build/<Config>/` directories across all platforms.
 
 This unified output structure is consistent across all build methods:
 - CMake builds (via CMakeLists.txt configuration)
 - Unified build script (`scripts/build.ps1`)
-- Legacy build scripts (`build_dynamic_library.ps1`, `build_dynamic_library.sh`)
-- Docker builds (via volume mounting to `./bin`)
-- C# integrated builds (copies from `bin/` to runtime directories)
+- Legacy build scripts (`scripts/build_dynamic_library.ps1`, `scripts/build_dynamic_library.sh`)
+- Docker builds (via volume mounting to `./build/Release`)
+- C# integrated builds (copies from `build/<Config>/`)
 
-The `bin/` directory is automatically created if it doesn't exist during the build process.
+The `build/<Config>/` directories are created automatically if they don't exist during the build process.
 
 ### Build Cache Management
 
@@ -199,11 +205,11 @@ The unified build script provides intelligent cache management:
 #### C Example
 ```bash
 # Compile and run (Linux/macOS)
-gcc -o c_example example/c_example.c -L./bin -lj2_orbit_propagator_shared -lm
+gcc -o c_example example/c_example.c -L./build/Release -lj2_orbit_propagator_shared -lm
 ./c_example
 
 # Compile and run (Windows)
-cl example/c_example.c /I include /link bin/j2_orbit_propagator_shared.lib
+cl example/c_example.c /I include /link build/Release/j2_orbit_propagator.lib
 c_example.exe
 ```
 

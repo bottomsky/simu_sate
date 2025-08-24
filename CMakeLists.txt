@@ -110,6 +110,9 @@ set_target_properties(j2_orbit_propagator_shared PROPERTIES
 # 为共享库定义导出宏
 target_compile_definitions(j2_orbit_propagator_shared PRIVATE J2_BUILD_DLL)
 
+# 创建别名目标，供可视化模块使用
+add_library(j2_orbit_propagator ALIAS j2_orbit_propagator_static)
+
 # 可选：构建示例程序
 option(BUILD_EXAMPLES "Build example programs" ON)
 if(BUILD_EXAMPLES)
@@ -125,6 +128,12 @@ option(BUILD_TESTS "Build test programs" ON)
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# 可选：构建可视化模块
+option(BUILD_VISUALIZATION "Build Vulkan visualization module" OFF)
+if(BUILD_VISUALIZATION)
+    add_subdirectory(visualization)
 endif()
 
 # 安装配置
