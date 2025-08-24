@@ -417,22 +417,22 @@ OrbitalElements J2OrbitPropagator::stateToElements(const StateVector& state, dou
         nu = 2.0 * M_PI - nu;
     }
     
-    // 9. 从真近点角 nu 计算偏近点角 E。
+    // 9. 从真近点角 nu 计算偏近点角 E 和平近点角 M。
     // 使用更稳定的公式并处理象限问题
     double E;
     if (std::abs(elements.e) < EPSILON) {
-        // 圆轨道情况
+        // 圆轨道情况：E = nu = M
         E = nu;
+        elements.M = nu;  // 对于圆轨道，平近点角等于真近点角
     } else {
         // 椭圆轨道情况
         double sin_E = std::sqrt(1.0 - elements.e * elements.e) * std::sin(nu) / (1.0 + elements.e * std::cos(nu));
         double cos_E = (elements.e + std::cos(nu)) / (1.0 + elements.e * std::cos(nu));
         E = std::atan2(sin_E, cos_E);
         E = normalizeAngle(E);
+        // 10. 从偏近点角 E 计算平近点角 M。
+        elements.M = E - elements.e * std::sin(E);
     }
-    
-    // 10. 从偏近点角 E 计算平近点角 M。
-    elements.M = E - elements.e * std::sin(E);
     
     // 归一化所有角度。
     elements.i = normalizeAngle(elements.i);
