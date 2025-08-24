@@ -57,9 +57,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 获取脚本所在目录
+# 获取脚本所在目录和项目根目录
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $ScriptDir
+$ProjectRoot = Split-Path -Parent $ScriptDir
+Set-Location $ProjectRoot
 
 # 清理构建缓存（保留 build/CMakeLists.txt）
 function Clean-BuildCache {
@@ -218,14 +219,14 @@ if ($exeFiles) {
     }
 }
 
-# 复制动态库到bin目录
-$BinDir = "..\bin"
+# 复制动态库到build/Release目录
+$BinDir = "..\build\Release"
 if (-not (Test-Path $BinDir)) {
     New-Item -ItemType Directory -Path $BinDir | Out-Null
 }
 
 if ($dllFiles) {
-    Write-Host "复制动态库到bin目录..." -ForegroundColor Yellow
+    Write-Host "复制动态库到build/Release目录..." -ForegroundColor Yellow
     foreach ($dll in $dllFiles) {
         $destPath = Join-Path $BinDir $dll.Name
         Copy-Item $dll.FullName $destPath -Force
@@ -234,7 +235,7 @@ if ($dllFiles) {
 }
 
 if ($libFiles) {
-    Write-Host "复制静态库到bin目录..." -ForegroundColor Yellow
+    Write-Host "复制静态库到build/Release目录..." -ForegroundColor Yellow
     foreach ($lib in $libFiles) {
         $destPath = Join-Path $BinDir $lib.Name
         Copy-Item $lib.FullName $destPath -Force
@@ -243,7 +244,7 @@ if ($libFiles) {
 }
 
 if ($exeFiles) {
-    Write-Host "复制可执行文件到bin目录..." -ForegroundColor Yellow
+    Write-Host "复制可执行文件到build/Release目录..." -ForegroundColor Yellow
     foreach ($exe in $exeFiles) {
         $destPath = Join-Path $BinDir $exe.Name
         Copy-Item $exe.FullName $destPath -Force

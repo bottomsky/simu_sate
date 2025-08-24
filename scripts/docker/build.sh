@@ -103,14 +103,14 @@ verify_build() {
 extract_artifacts() {
     print_info "提取构建产物到本地..."
     
-    # 创建输出目录
-    mkdir -p bin
+    # 创建输出目录（主产物位于 build/Release）
+    mkdir -p build/Release
     
     # 创建临时容器并复制文件
     container_id=$(docker create j2-orbit-propagator-alpine:latest)
     
-    # 复制库文件
-    docker cp "$container_id:/usr/local/lib/." bin/ 2>/dev/null || {
+    # 复制库文件到 build/Release
+    docker cp "$container_id:/usr/local/lib/." build/Release/ 2>/dev/null || {
         print_warning "无法复制库文件，可能没有生成"
     }
     
@@ -118,13 +118,13 @@ extract_artifacts() {
     docker rm "$container_id" > /dev/null
     
     # 显示提取的文件
-    if [ "$(ls -A bin 2>/dev/null)" ]; then
-        print_success "构建产物已提取到 bin/"
+    if [ "$(ls -A build/Release 2>/dev/null)" ]; then
+        print_success "构建产物已提取到 build/Release/"
         echo "提取的文件:"
-        ls -la bin/
-    else
+        ls -la build/Release/
+    } else {
         print_warning "没有找到构建产物"
-    fi
+    }
 }
 
 # 显示使用说明
@@ -192,7 +192,7 @@ main() {
     print_info "镜像名称: j2-orbit-propagator-alpine:latest"
     
     if [ "$skip_extract" = false ]; then
-        print_info "构建产物位置: bin/"
+        print_info "构建产物位置: build/Release/"
     fi
 }
 

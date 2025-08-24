@@ -14,7 +14,7 @@ function Ensure-Native-Build {
     .SYNOPSIS
       使用仓库根目录的 C++ 构建脚本构建原生库（可选清理并强制重新配置）。
     .DESCRIPTION
-      调用 ..\..\scripts\build.ps1 进行构建，构建产物会被收集至仓库根目录的 bin/ 目录。
+      调用 ..\..\scripts\build.ps1 进行构建。主要产物将统一输出到 `build/<配置>/` 目录（如 `build/Release/`、`build/Debug/`）。
     .PARAMETER Config
       原生构建配置（例如 Release/Debug）。如果未指定，将默认沿用脚本的 $BuildType。
     .PARAMETER Clean
@@ -22,7 +22,7 @@ function Ensure-Native-Build {
     .PARAMETER Reconfigure
       指定则删除 CMakeCache.txt 和 CMakeFiles/ 以强制 cmake 重新配置。
     .OUTPUTS
-      无。构建产物输出到仓库根目录的 bin/。
+      无。主要产物位于 `build/<配置>/`。
     .EXCEPTIONS
       如果构建脚本执行失败，将抛出 PowerShell 运行时异常并终止执行。
     #>
@@ -63,7 +63,7 @@ function Get-AppProjectInfo {
       PSCustomObject，包含：
         - ProjectDir: 项目目录的绝对路径
         - Csproj: .csproj 文件的绝对路径
-        - OutDir: 输出目录（bin/<Config>/net8.0）的绝对路径
+        - OutDir: 输出目录（build/<Config>/net8.0）的绝对路径
     .EXCEPTIONS
       当传入的名称不受支持或项目文件不存在时抛出异常。
     #>
@@ -114,7 +114,7 @@ function Build-CSharp {
     .PARAMETER TargetApp
       目标应用名称。可取值：MemoryLayoutTest、TestApp、TestProject、None。传入 None 时仅构建库。
     .OUTPUTS
-      无。生成到各自项目的 bin/ 目录。
+      无。生成到各自项目的 build/<Config>/ 目录。
     .EXCEPTIONS
       dotnet build 出错时将抛出 PowerShell 运行时异常。
     #>
@@ -137,15 +137,15 @@ function Build-CSharp {
 function Copy-NativeLibToOutput {
     <#
     .SYNOPSIS
-      将 bin/ 下的原生库复制到指定 C# 项目的输出目录。
+      将原生库复制到指定 C# 项目的输出目录（从 build/<配置> 目录）。
     .DESCRIPTION
       按平台优先顺序尝试复制 j2_orbit_propagator.dll / libj2_orbit_propagator.so / libj2_orbit_propagator.dylib。
     .PARAMETER OutputDir
-      目标输出目录（通常为 项目/bin/<Config>/net8.0）。
+      目标输出目录（通常为 项目/build/<Config>/net8.0）。
     .OUTPUTS
       无。
     .EXCEPTIONS
-      如果在仓库根 bin/ 未找到任一原生库，则抛出异常。
+      如果在 `build/<配置>` 未找到任一原生库，则抛出异常。
     #>
     param(
         [Parameter(Mandatory)][string]$OutputDir
@@ -154,25 +154,33 @@ function Copy-NativeLibToOutput {
     if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir | Out-Null }
 
     $rootDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    $rootBin = Join-Path $rootDir 'bin'
 
-    $candidates = @(
+    # 计算原生主要产物目录（build/<配置>）
+    $effectiveNativeConfig = if ([string]::IsNullOrWhiteSpace($script:NativeEffectiveConfig)) { $BuildType } else { $script:NativeEffectiveConfig }
+    $nativeRoot = (Resolve-Path (Join-Path $PSScriptRoot $NativeBuildDir)).Path
+    $primaryDir = Join-Path $nativeRoot $effectiveNativeConfig
+
+    # 注意：统一使用 build/<配置> 目录
+
+    $names = @(
         'j2_orbit_propagator.dll',
         'libj2_orbit_propagator.so',
         'libj2_orbit_propagator.dylib'
     )
 
     $found = $false
-    foreach ($name in $candidates) {
-        $p = Join-Path $rootBin $name
-        if (Test-Path -LiteralPath $p) {
-            Copy-Item $p $OutputDir -Force
+    foreach ($name in $names) {
+        $p1 = Join-Path $primaryDir $name
+        if (Test-Path -LiteralPath $p1) {
+            Copy-Item $p1 $OutputDir -Force
             $found = $true
         }
     }
 
+    # 统一使用 build/<配置> 目录
+
     if (-not $found) {
-        throw "Native library not found in $rootBin"
+        throw "Native library not found in '$primaryDir'"
     }
 }
 
@@ -181,7 +189,7 @@ function Run-Tests {
     .SYNOPSIS
       运行选定的 C# 控制台程序。
     .DESCRIPTION
-      从仓库根 bin/ 目录复制原生库到目标项目输出目录后执行 dotnet run。
+      从 `build/<配置>` 复制原生库到目标项目输出目录后执行 dotnet run。
     .PARAMETER TargetApp
       目标应用名称。可取值：MemoryLayoutTest、TestApp、TestProject。
     .OUTPUTS
@@ -206,6 +214,7 @@ function Run-Tests {
 # 统一执行流程
 $nativeCfg = $BuildType
 if (-not [string]::IsNullOrWhiteSpace($NativeConfig)) { $nativeCfg = $NativeConfig }
+$script:NativeEffectiveConfig = $nativeCfg
 
 Ensure-Native-Build -Config $nativeCfg -Clean:$CleanNative -Reconfigure:$NativeReconfigure
 Build-CSharp -TargetApp $Run

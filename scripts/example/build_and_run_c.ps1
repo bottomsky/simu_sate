@@ -63,7 +63,7 @@ Write-Host "找到 C 示例文件: $cSourcePath" -ForegroundColor Green
 Write-Host "编译C示例..." -ForegroundColor Yellow
 try {
     # Windows平台编译命令
-    $compileCmd = "$Compiler -I ../../include -o c_example.exe $cSourcePath -L../../bin -lj2_orbit_propagator -lm"
+    $compileCmd = "$Compiler -I ../../include -o c_example.exe $cSourcePath -L../../build/Release -lj2_orbit_propagator -lm"
     Write-Host "执行编译命令: $compileCmd"
     
     Invoke-Expression $compileCmd

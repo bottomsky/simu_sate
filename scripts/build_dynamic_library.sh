@@ -178,26 +178,26 @@ if [ "$INSTALL_BUILD" = true ]; then
     cmake --install . --config "$BUILD_TYPE"
 fi
 
-# Copy all build artifacts to bin directory
-BIN_DIR="../bin"
-mkdir -p "$BIN_DIR"
+# Copy all build artifacts to build directory
+BUILD_OUTPUT_DIR="../build/Release"
+mkdir -p "$BUILD_OUTPUT_DIR"
 
 # Copy shared libraries
 if ls *.so 1> /dev/null 2>&1; then
-    echo "Copying shared libraries to bin directory..."
-    cp *.so "$BIN_DIR/"
+    echo "Copying shared libraries to build directory..."
+    cp *.so "$BUILD_OUTPUT_DIR/"
 fi
 
 # Copy static libraries
 if ls *.a 1> /dev/null 2>&1; then
-    echo "Copying static libraries to bin directory..."
-    cp *.a "$BIN_DIR/"
+    echo "Copying static libraries to build directory..."
+    cp *.a "$BUILD_OUTPUT_DIR/"
 fi
 
 # Copy executables
 if ls *_tests j2_example 1> /dev/null 2>&1; then
-    echo "Copying executables to bin directory..."
-    cp *_tests j2_example "$BIN_DIR/" 2>/dev/null || true
+    echo "Copying executables to build directory..."
+    cp *_tests j2_example "$BUILD_OUTPUT_DIR/" 2>/dev/null || true
 fi
 
 # Copy shared library to examples directory if it exists (backward compatibility)

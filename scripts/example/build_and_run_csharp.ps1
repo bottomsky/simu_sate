@@ -141,7 +141,7 @@ try {
     Write-Host "编译成功！" -ForegroundColor Green
 
     # 将原生DLL复制到输出目录，确保运行时能加载
-    $outputDir = Join-Path $PWD "bin/Release/$DotNetVersion"
+    $outputDir = Join-Path $PWD "build/Release/$DotNetVersion"
     if (-not (Test-Path $outputDir)) {
         Write-Host "创建输出目录: $outputDir" -ForegroundColor Yellow
         New-Item -ItemType Directory -Path $outputDir -Force | Out-Null

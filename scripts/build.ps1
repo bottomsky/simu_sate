@@ -6,11 +6,15 @@
   This PowerShell script configures and builds the C++ project using CMake.
   It supports cleaning the build cache (removing generated files in the build directory
   while preserving the build/CMakeLists.txt file as required by the project layout).
-  It also ensures that the bin directory exists and copies build artifacts (DLL/EXE)
-  into the bin directory for convenient access.
+  The primary build artifacts reside under build/<Config> (e.g., build/Debug, build/Release).
+  For convenience, the script also collects Windows runtime artifacts (DLL/EXE)
+  into the repository-level bin directory.
 
 .PARAMETER Clean
   If specified, removes all contents in the build directory except build/CMakeLists.txt.
+
+.PARAMETER CleanCache
+  Alias for cleaning build cache while preserving build/CMakeLists.txt (same effect as -Clean).
 
 .PARAMETER Config
   The build configuration. Typical values: Debug or Release. Default is Release.
@@ -25,6 +29,9 @@
   ./build.ps1 -Clean -Config Release
 
 .EXAMPLE
+  ./build.ps1 -CleanCache -Config Release
+
+.EXAMPLE
   ./build.ps1 -Config Debug -Parallel 8
 
 .NOTES
@@ -35,6 +42,7 @@
 [CmdletBinding()]
 param(
   [switch]$Clean,
+  [switch]$CleanCache,
   [string]$Config = 'Release',
   [int]$Parallel = [Environment]::ProcessorCount,
   [switch]$Reconfigure
@@ -202,7 +210,7 @@ Write-Host ("Parallel: {0}" -f $Parallel)
 Ensure-Directory -Path $BuildDir
 Ensure-Directory -Path $BinDir
 
-if ($Clean) {
+if ($Clean -or $CleanCache) {
   Clean-BuildCache -BuildDir $BuildDir
 }
 
@@ -211,4 +219,5 @@ Build-Project -BuildDir $BuildDir -Config $Config -Parallel $Parallel
 Copy-ArtifactsToBin -BuildDir $BuildDir -BinDir $BinDir
 
 Write-Section "Done"
-Write-Host "Build completed. Artifacts are available in: $BinDir" -ForegroundColor Green
+Write-Host ("Build completed. Primary artifacts: {0}" -f (Join-Path $BuildDir $Config)) -ForegroundColor Green
+Write-Host ("Convenience copies (Windows DLL/EXE): {0}" -f $BinDir) -ForegroundColor Green
