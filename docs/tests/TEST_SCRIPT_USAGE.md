@@ -68,7 +68,8 @@ scripts\tests\build_and_run_tests.ps1
 
 ## 与统一构建脚本/输出目录协作
 
-- 统一输出策略：项目所有动态/静态库与可执行文件统一收集到仓库根目录 `bin/`。
+- 输出策略：主要产物位于 `build/<配置>/`（如 `build/Release/`、`build/Debug/`）。在 Windows 平台，为方便跨语言运行，可将运行时产物（DLL/EXE）便捷收集到仓库根目录 `bin/`（可选，兼容旧流程）。
++ 输出策略：主要产物位于 `build/<配置>/`（如 `build/Release/`、`build/Debug/`）。在 Windows 平台，为方便跨语言运行，可将运行时产物（DLL/EXE）便捷收集到仓库根目录 `bin/`（可选，兼容旧流程）。
 - 原生构建入口：建议通过 `scripts/build.ps1` 进行 C++/CUDA 原生构建与清理；该脚本提供：
   - `-Clean`：清理构建缓存，但保留 `build/CMakeLists.txt`
   - `-Reconfigure`：移除 `CMakeCache.txt` 与 `CMakeFiles/` 以强制全量配置
@@ -78,7 +79,7 @@ scripts\tests\build_and_run_tests.ps1
     ```powershell
     .\scripts\build.ps1 -Clean -Reconfigure -Config Release
     ```
-  - Docker 流程：推荐使用挂载方式将容器 `/output` 直接同步到主机 `./bin`，详见 [docker/README-动态库路径说明](../docker/README-动态库路径说明.md)
+  - Docker 流程：推荐使用挂载方式将容器 `/output` 直接同步到主机 `./build/Release`，或在构建后导出到该目录；详见 [docker/README-动态库路径说明](../docker/README-动态库路径说明.md)
   - 端到端验证清单：参见 [CROSS_PLATFORM_BUILD.md — 验证清单（快速自检）](../CROSS_PLATFORM_BUILD.md#validation-checklist)
 
 ## 常用使用示例
@@ -199,7 +200,7 @@ scripts\tests\build_and_run_tests.ps1
 - C# 脚本：`scripts/example/csharp/build_and_test_csharp.ps1`
   - 统一调用 `scripts/build.ps1` 构建原生库
   - 参数：`-CleanNative`、`-NativeReconfigure`、`-NativeConfig Release|Debug|RelWithDebInfo|MinSizeRel`
-  - 从项目根 `bin/` 复制 `j2_orbit_propagator` 动态库到 C# 运行目录，完成 P/Invoke 运行时加载
+  - 从 `build/<配置>` 复制 `j2_orbit_propagator` 动态库到 C# 运行目录，完成 P/Invoke 运行时加载
 
 ## 输出文件位置
 

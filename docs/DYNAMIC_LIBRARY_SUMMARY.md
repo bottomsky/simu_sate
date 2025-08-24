@@ -1,17 +1,16 @@
 # Dynamic Library Summary
 
-This document summarizes how the dynamic libraries are produced, named, and consumed across platforms. It also clarifies the unified output policy and how the C# example/test workflow finds the native binaries.
+This document summarizes how the dynamic libraries are produced, named, and consumed across platforms. It also clarifies the output policy and how the C# example/test workflow finds the native binaries.
 
 ## Output Location
 
-All compiled artifacts are unified into the repository-level `bin/` directory, regardless of whether you build via:
+Primary build artifacts are located under `build/<Config>/` (e.g., `build/Release/`, `build/Debug/`), regardless of whether you build via:
 - CMake directly
 - Unified script `scripts/build.ps1`
-- Legacy scripts (`scripts/build_dynamic_library.ps1`, `scripts/build_dynamic_library.sh`)
-- Docker builds
+- Docker builds (mount or extraction)
 - C# integrated script (`scripts/example/csharp/build_and_test_csharp.ps1`)
 
-The C# script copies native libraries from `bin/` to the managed projects' output folders at build/test time.
+所有构建产物统一输出到 `build/<配置>/` 目录，确保跨平台一致性。
 
 ## Library Names
 
@@ -23,9 +22,9 @@ These names match the P/Invoke base name `j2_orbit_propagator` used by .NET bind
 
 ## Consumers
 
-- C Example: Links against `bin/j2_orbit_propagator.*`
+- C Example: Links against artifacts under `build/<Config>/j2_orbit_propagator.*`
 - C#/.NET: P/Invoke (`DllImport("j2_orbit_propagator")`) expects the native library to be present in the runtime directory or on the system search path.
-- Tests: The unified test runner ensures test binaries and dependencies are discoverable under `bin/`.
+- Tests: Binaries and dependencies are discoverable under `build/<Config>/`.
 
 ## Build Variants
 
@@ -39,12 +38,12 @@ These names match the P/Invoke base name `j2_orbit_propagator` used by .NET bind
 
 ## Docker Notes
 
-- Container builds write artifacts into host `./bin` via bind mounts.
+- Container builds publish artifacts into host `./build/Release/` via bind mounts, or can be exported there after the build.
 - See `docker/README-动态库路径说明.md` for additional path mapping and extraction options.
 
 ## C# Integration Notes
 
-- `scripts/example/csharp/build_and_test_csharp.ps1` invokes the unified native build, then copies from `bin/`.
+- `scripts/example/csharp/build_and_test_csharp.ps1` 会从 `build/<配置>` 复制原生库到 C# 项目的输出目录。
 - The script supports `-CleanNative`, `-NativeReconfigure`, `-NativeConfig` for controlling native build behavior from the managed side.
 
 ## Versioning
@@ -122,6 +121,15 @@ These names match the P/Invoke base name `j2_orbit_propagator` used by .NET bind
 ## 构建结果
 
 ### 生成的文件
+
+构建完成后，动态库文件统一位于 `build/<配置>/` 目录：
+
+| 平台 | 文件类型 | 位置 |
+|------|----------|------|
+| Linux | 共享库 | `build/Release/libj2_orbit_propagator.so` |
+| Windows | 动态库 | `build/Release/j2_orbit_propagator.dll` |
+| Windows | 导入库 | `build/Release/j2_orbit_propagator.lib` |
+| macOS | 动态库 | `build/Release/libj2_orbit_propagator.dylib` |
 
 ```
 build/Release/

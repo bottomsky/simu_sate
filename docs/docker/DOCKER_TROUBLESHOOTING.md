@@ -116,7 +116,7 @@ docker pull hello-world:latest
 
 ### 挂载模式构建
 ```powershell
-# 直接输出到 bin 目录
+# 直接输出到 build/Release 目录
 .\build.ps1 -WithMount
 
 # 输出到自定义目录
