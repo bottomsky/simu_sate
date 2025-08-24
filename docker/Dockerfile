@@ -99,19 +99,19 @@ RUN echo "=== Building project ===" && \
 RUN echo "=== Copying build artifacts ===" && \
     mkdir -p /output && \
     echo "=== 复制动态库到输出目录 ===" && \
-    find bin -name "*.so" -exec cp -v {} /output/ \; && \
-    find bin -name "*.a" -exec cp -v {} /output/ \; && \
+    find build -name "*.so" -exec cp -v {} /output/ \; && \
+    find build -name "*.a" -exec cp -v {} /output/ \; && \
     echo "=== 输出目录信息 ===" && \
     echo "容器内输出目录: /output" && \
     echo "输出目录内容:" && \
     ls -la /output/ && \
     echo "=== 动态库挂载信息 ===" && \
     echo "要挂载的容器路径: /output" && \
-    echo "建议的主机挂载路径: ./bin" && \
-    echo "Docker 挂载命令示例: -v \$(pwd)/bin:/output" && \
+    echo "建议的主机挂载路径: ./build/Release" && \
+    echo "Docker 挂载命令示例: -v \$(pwd)/build/Release:/output" && \
     echo "=== 库文件完整路径列表 ===" && \
     find /output -type f | while read file; do \
-        echo "  $file ($(stat -c%s "$file") bytes)" \
+        echo "  $file ($(stat -c%s \"$file\") bytes)" \
     ; done
 
 # 最终验证

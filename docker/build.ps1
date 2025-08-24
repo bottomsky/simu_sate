@@ -1,11 +1,11 @@
-# Alpine Linux 构建脚本 (PowerShell 版本)
+﻿# Alpine Linux 构建脚本 (PowerShell 版本)
 # 使用 prantlf/alpine-make-gcc:latest 基础镜像构建 J2 Orbit Propagator
 
 param(
     [switch]$NoCleanup,
     [switch]$NoExtract,
     [switch]$WithMount,
-    [string]$MountPath = "bin",
+    [string]$MountPath = "build/Release",
     [switch]$BuildBaseOnly,
     [switch]$SkipBase,
     [switch]$Help
@@ -42,14 +42,14 @@ function Show-Usage {
     Write-Host "  -NoCleanup     跳过清理步骤"
     Write-Host "  -NoExtract     跳过提取构建产物"
     Write-Host "  -WithMount     使用挂载方式直接输出到主机目录"
-    Write-Host "  -MountPath     指定挂载的主机路径 (默认: bin)"
+    Write-Host "  -MountPath     指定挂载的主机路径 (默认: build/Release)"
     Write-Host "  -BuildBaseOnly 仅构建基础镜像"
     Write-Host "  -SkipBase      跳过基础镜像构建（假设已存在）"
     Write-Host "  -Help          显示此帮助信息"
     Write-Host ""
     Write-Host "路径说明:"
     Write-Host "  - 在 docker 目录运行时，相对路径相对于 docker 目录解析"
-    Write-Host "  - 默认 'bin' 会解析为项目根目录下的 bin 目录"
+    Write-Host "  - 默认 'build/Release' 会解析为项目根目录下的 build/Release 目录"
     Write-Host "  - 支持绝对路径和相对路径"
     Write-Host ""
     Write-Host "示例:"
@@ -57,9 +57,9 @@ function Show-Usage {
     Write-Host "  .\build.ps1 -BuildBaseOnly           # 仅构建基础镜像"
     Write-Host "  .\build.ps1 -SkipBase                # 跳过基础镜像构建"
     Write-Host "  .\build.ps1 -NoCleanup               # 构建但不清理旧镜像"
-    Write-Host "  .\build.ps1 -WithMount               # 使用挂载方式输出到项目根目录/bin"
+    Write-Host "  .\build.ps1 -WithMount               # 使用挂载方式输出到项目根目录/build/Release"
     Write-Host "  .\build.ps1 -WithMount -MountPath D:\output  # 挂载到指定目录"
-    Write-Host "  .\build.ps1 -WithMount -MountPath ../bin     # 挂载到上级目录的 bin"
+    Write-Host "  .\build.ps1 -WithMount -MountPath ../build/Release     # 挂载到上级目录的 build/Release"
     Write-Host ""
     Write-Host "基础镜像说明:"
     Write-Host "  基础镜像包含: cmake, git, pkgconfig, eigen-dev, linux-headers"
@@ -68,7 +68,7 @@ function Show-Usage {
     Write-Host "挂载模式说明:"
     Write-Host "  使用 -WithMount 参数时，构建产物将直接输出到主机指定目录"
     Write-Host "  容器内路径: /output"
-    Write-Host "  默认主机路径: ../bin"
+    Write-Host "  默认主机路径: ../build/Release"
 }
 
 # 检查 Docker 是否可用
@@ -437,8 +437,8 @@ function Export-Artifacts {
     Write-Info "提取构建产物到本地..."
     
     try {
-        # 创建输出目录 - 统一输出到 bin 目录
-        $outputDir = "..\bin"
+        # 创建输出目录 - 统一输出到 build/Release 目录
+        $outputDir = "..\build\Release"
         if (-not (Test-Path $outputDir)) {
             New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
         }
@@ -546,12 +546,12 @@ function Main {
         Write-Info "镜像名称: j2-orbit-propagator-alpine:latest"
         
         if (-not $NoExtract) {
-            Write-Info "构建产物位置: bin\"
+            Write-Info "构建产物位置: build\Release\"
         }
         
         Write-Host "=== 动态库路径信息 ===" -ForegroundColor Cyan
         Write-Host "容器内路径: /usr/local/lib/" -ForegroundColor Gray
-        Write-Host "提取到主机路径: bin\" -ForegroundColor Gray
+        Write-Host "提取到主机路径: build\Release\" -ForegroundColor Gray
         Write-Host "如需挂载模式，请使用: .\build.ps1 -WithMount" -ForegroundColor Gray
     }
 }
