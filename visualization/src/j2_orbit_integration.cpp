@@ -175,7 +175,7 @@ VisualizationError J2OrbitPropagator::computeStateAtTime(const OrbitalElements& 
                                                          double time,
                                                          SatelliteState& state) {
     // 构造临时句柄并传播到指定时刻，然后计算状态
-    COrbitalElements c_init = elements; c_init.t = time;
+    COrbitalElements c_init = elements; // 保持原始时间戳，不修改c_init.t
     J2PropagatorHandle handle = j2_propagator_create(&c_init);
     if (!handle) return VisualizationError::UNKNOWN_ERROR;
 
@@ -211,7 +211,7 @@ VisualizationError J2OrbitPropagator::elementsToState(const OrbitalElements& ele
 
 VisualizationError J2OrbitPropagator::stateToElements(const SatelliteState& state,
                                                       OrbitalElements& elements) {
-    // 使用零时刻进行换算
+    // 使用状态的时间戳进行换算
     CStateVector cs{};
     cs.r[0] = state.position.x * 1000.0;
     cs.r[1] = state.position.y * 1000.0;
@@ -229,7 +229,8 @@ VisualizationError J2OrbitPropagator::stateToElements(const SatelliteState& stat
     if (!handle) return VisualizationError::UNKNOWN_ERROR;
 
     COrbitalElements c_out{};
-    if (j2_propagator_state_to_elements(handle, &cs, 0.0, &c_out) != 0) {
+    // 使用状态的时间戳而不是0.0，这样可以正确计算当前时间的轨道元素
+    if (j2_propagator_state_to_elements(handle, &cs, state.timestamp, &c_out) != 0) {
         j2_propagator_destroy(handle);
         return VisualizationError::UNKNOWN_ERROR;
     }
@@ -448,32 +449,42 @@ VisualizationError OrbitVisualizationManager::getSatelliteDataForRendering(uint3
                                                                            double time,
                                                                            SatelliteRenderData& satelliteData) {
     auto it = orbitTasks.find(taskId);
-    if (it == orbitTasks.end() || !it->second.computed) {
+    if (it == orbitTasks.end()) {
         return VisualizationError::UNKNOWN_ERROR;
     }
     
     const OrbitTask& task = it->second;
     
-    // 在结果中查找最接近的时间点
-    if (task.result.states.empty()) {
+    // 检查轨道传播器是否可用
+    if (!propagator) {
         return VisualizationError::UNKNOWN_ERROR;
     }
     
-    const SatelliteState* closestState = &task.result.states[0];
-    double minTimeDiff = std::abs(closestState->timestamp - time);
-    
-    for (const auto& state : task.result.states) {
-        double timeDiff = std::abs(state.timestamp - time);
-        if (timeDiff < minTimeDiff) {
-            minTimeDiff = timeDiff;
-            closestState = &state;
-        }
+    // 实时计算指定时间的卫星状态
+    SatelliteState currentState;
+    VisualizationError result = propagator->computeStateAtTime(task.elements, time, currentState);
+    if (result != VisualizationError::SUCCESS) {
+        return result;
     }
     
-    satelliteData.state = *closestState;
+    // 计算当前时间的轨道元素
+    OrbitalElements currentElements;
+    result = propagator->stateToElements(currentState, currentElements);
+    if (result != VisualizationError::SUCCESS) {
+        // 如果轨道元素计算失败，仍然使用状态数据，但设置默认轨道元素
+        currentElements = task.elements;
+        currentElements.t = time;
+    }
+    
+    // 设置卫星渲染数据
+    satelliteData.state = currentState;
+    satelliteData.state.timestamp = time;
     satelliteData.color = task.color;
-    satelliteData.scale = closestState->scale;
+    satelliteData.scale = 1.0f; // 使用默认缩放
     satelliteData.visible = true;
+    
+    // 注意：轨道元素信息已通过computeStateAtTime和stateToElements计算，
+    // 但SatelliteState结构体中没有elements成员，轨道元素信息需要通过其他方式传递
     
     return VisualizationError::SUCCESS;
 }
@@ -550,6 +561,27 @@ void OrbitVisualizationManager::setOrbitVisible(uint32_t taskId, bool visible) {
  */
 size_t OrbitVisualizationManager::getTaskCount() const {
     return orbitTasks.size();
+}
+
+/**
+ * @brief 获取任务对应的卫星ID
+ * @param taskId 轨道任务ID
+ * @return uint32_t 卫星ID，如果任务不存在或未计算则返回0
+ */
+uint32_t OrbitVisualizationManager::getSatelliteId(uint32_t taskId) const {
+    auto it = orbitTasks.find(taskId);
+    if (it != orbitTasks.end()) {
+        return it->second.satelliteId;
+    }
+    return 0;
+}
+
+/**
+ * @brief 获取轨道传播器实例
+ * @return std::shared_ptr<J2OrbitPropagator> 轨道传播器实例
+ */
+std::shared_ptr<J2OrbitPropagator> OrbitVisualizationManager::getPropagator() const {
+    return propagator;
 }
 
 } // namespace j2_orbit_visualization

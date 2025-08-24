@@ -4,6 +4,10 @@
 #include <cmath>
 #include <string>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace j2_orbit_visualization {
 
 // 与 VulkanRenderer 保持一致的飞行中帧数常量
@@ -567,35 +571,61 @@ VisualizationError OrbitRenderer::createSatellitePipeline() {
  * @return VisualizationError 创建结果
  */
 VisualizationError OrbitRenderer::createSatelliteGeometry() {
-    // 创建简单的立方体作为卫星模型
-    std::vector<Vertex> vertices = {
-        // 前面
-        {{-0.5f, -0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
-        {{ 0.5f, -0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
-        {{ 0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-        {{-0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-        
-        // 后面
-        {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}},
-        {{ 0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
-        {{ 0.5f,  0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}},
-        {{-0.5f,  0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}}
-    };
+    // 创建球形卫星模型
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
     
-    std::vector<uint32_t> indices = {
-        // 前面
-        0, 1, 2, 2, 3, 0,
-        // 后面
-        4, 5, 6, 6, 7, 4,
-        // 左面
-        7, 3, 0, 0, 4, 7,
-        // 右面
-        1, 5, 6, 6, 2, 1,
-        // 上面
-        3, 2, 6, 6, 7, 3,
-        // 下面
-        0, 1, 5, 5, 4, 0
-    };
+    // 球体参数
+    const uint32_t latitudeSegments = 16;   // 纬度段数
+    const uint32_t longitudeSegments = 32;  // 经度段数
+    const float radius = 1.0f;              // 单位球体，实际大小通过变换矩阵控制
+    
+    // 生成球体顶点
+    for (uint32_t lat = 0; lat <= latitudeSegments; ++lat) {
+        float theta = lat * M_PI / latitudeSegments; // 0 到 π
+        float sinTheta = sin(theta);
+        float cosTheta = cos(theta);
+        
+        for (uint32_t lon = 0; lon <= longitudeSegments; ++lon) {
+            float phi = lon * 2.0f * M_PI / longitudeSegments; // 0 到 2π
+            float sinPhi = sin(phi);
+            float cosPhi = cos(phi);
+            
+            Vertex vertex{};
+            
+            // 位置
+            vertex.position.x = radius * sinTheta * cosPhi;
+            vertex.position.y = radius * cosTheta;
+            vertex.position.z = radius * sinTheta * sinPhi;
+            
+            // 法线（对于球体，法线就是归一化的位置向量）
+            vertex.normal = glm::normalize(vertex.position);
+            
+            // 纹理坐标
+            vertex.texCoord.x = (float)lon / longitudeSegments;
+            vertex.texCoord.y = 1.0f - (float)lat / latitudeSegments;
+            
+            vertices.push_back(vertex);
+        }
+    }
+    
+    // 生成球体索引（逆时针顺序）
+    for (uint32_t lat = 0; lat < latitudeSegments; ++lat) {
+        for (uint32_t lon = 0; lon < longitudeSegments; ++lon) {
+            uint32_t first = lat * (longitudeSegments + 1) + lon;
+            uint32_t second = first + longitudeSegments + 1;
+            
+            // 第一个三角形（逆时针顺序）
+            indices.push_back(first);
+            indices.push_back(first + 1);
+            indices.push_back(second);
+            
+            // 第二个三角形（逆时针顺序）
+            indices.push_back(second);
+            indices.push_back(first + 1);
+            indices.push_back(second + 1);
+        }
+    }
     
     satelliteIndexCount = static_cast<uint32_t>(indices.size());
     
@@ -796,7 +826,8 @@ void OrbitRenderer::renderSatellites(VkCommandBuffer commandBuffer, uint32_t fra
         
         // 计算模型矩阵
         glm::mat4 model = glm::translate(glm::mat4(1.0f), satelliteData.state.position);
-        // 在这里可以添加旋转和缩放
+        model = glm::scale(model, glm::vec3(satelliteData.state.scale));
+        // 应用缩放变换，使卫星可见
         
         // 推送模型矩阵
         vkCmdPushConstants(commandBuffer, satellitePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &model);

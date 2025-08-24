@@ -124,8 +124,8 @@ struct CameraParams {
     glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f);       ///< 目标位置
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);           ///< 上方向
     float fov = 45.0f;                                     ///< 视野角度
-    float nearPlane = 0.1f;                               ///< 近裁剪面
-    float farPlane = 100000.0f;                           ///< 远裁剪面
+    float nearPlane = 1.0f;                               ///< 近裁剪面（调整为1米以保持深度精度）
+    float farPlane = 120000000.0f;                        ///< 远裁剪面（120,000km，确保卫星可见）
     float moveSpeed = 1000.0f;                            ///< 移动速度
     float rotateSpeed = 0.5f;                             ///< 旋转速度
 };

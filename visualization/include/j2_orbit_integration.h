@@ -368,6 +368,19 @@ public:
      * @return size_t 任务数量
      */
     size_t getTaskCount() const;
+    
+    /**
+     * @brief 获取任务对应的卫星ID
+     * @param taskId 轨道任务ID
+     * @return uint32_t 卫星ID，如果任务不存在或未计算则返回0
+     */
+    uint32_t getSatelliteId(uint32_t taskId) const;
+    
+    /**
+     * @brief 获取轨道传播器实例
+     * @return std::shared_ptr<J2OrbitPropagator> 轨道传播器实例
+     */
+    std::shared_ptr<J2OrbitPropagator> getPropagator() const;
 
 private:
     struct OrbitTask {
