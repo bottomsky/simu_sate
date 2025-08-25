@@ -49,6 +49,9 @@ if(NOT glfw3_FOUND)
         message(STATUS "Found GLFW via manual search: ${GLFW_LIBRARY}")
     else()
         message(WARNING "GLFW3 not found via manual search. Falling back to FetchContent to download and build GLFW.")
+        if(FETCHCONTENT_FULLY_DISCONNECTED)
+            message(FATAL_ERROR "GLFW3 was not found via manual search and FetchContent is disabled (FETCHCONTENT_FULLY_DISCONNECTED=ON). Please install GLFW first (e.g. vcpkg install glfw3:x64-windows) or provide glfw3 CONFIG package, then re-run CMake.")
+        endif()
         include(FetchContent)
         set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
         set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -84,6 +87,9 @@ find_package(glm CONFIG QUIET)
 
 if(NOT glm_FOUND)
     message(WARNING "glm config package not found. Falling back to FetchContent.")
+    if(FETCHCONTENT_FULLY_DISCONNECTED)
+        message(FATAL_ERROR "GLM was not found and FetchContent is disabled (FETCHCONTENT_FULLY_DISCONNECTED=ON). Please install glm first (e.g. vcpkg install glm:x64-windows) and re-run CMake.")
+    endif()
     include(FetchContent)
     FetchContent_Declare(
         glm_src
@@ -107,21 +113,45 @@ endif()
 
 # 添加 stb_image 库支持
 if(NOT TARGET stb_image)
-    include(FetchContent)
-    FetchContent_Declare(
-        stb_image_src
-        GIT_REPOSITORY https://github.com/nothings/stb.git
-        GIT_TAG master
+    # 优先从已安装位置查找（例如 vcpkg 或系统路径）
+    set(_STB_HINT_DIRS
+        $ENV{VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/include
+        $ENV{VCPKG_ROOT}/installed/x64-windows/include
+        $ENV{VCPKG_ROOT}/installed/x64-windows-static/include
+        $ENV{VCPKG_ROOT}/installed/x86-windows/include
+        ${CMAKE_PREFIX_PATH}/include
+        ${CMAKE_INSTALL_PREFIX}/include
     )
-    FetchContent_GetProperties(stb_image_src)
-    if(NOT stb_image_src_POPULATED)
-        FetchContent_Populate(stb_image_src)
+    find_path(STB_IMAGE_INCLUDE_DIR
+        NAMES stb/stb_image.h stb_image.h
+        HINTS ${_STB_HINT_DIRS}
+        PATH_SUFFIXES include
+    )
+    if(STB_IMAGE_INCLUDE_DIR)
+        add_library(stb_image INTERFACE)
+        target_include_directories(stb_image INTERFACE ${STB_IMAGE_INCLUDE_DIR})
+        message(STATUS "Found stb headers at: ${STB_IMAGE_INCLUDE_DIR}")
+    else()
+        # 回退到 FetchContent（仅当未强制离线构建时）
+        if(FETCHCONTENT_FULLY_DISCONNECTED)
+            message(FATAL_ERROR "stb headers were not found and FetchContent is disabled (FETCHCONTENT_FULLY_DISCONNECTED=ON). Please install stb (e.g. vcpkg install stb:x64-windows) or vendor the headers, then re-run CMake.")
+        endif()
+        include(FetchContent)
+        FetchContent_Declare(
+            stb_image_src
+            GIT_REPOSITORY https://github.com/nothings/stb.git
+            GIT_TAG master
+        )
+        FetchContent_GetProperties(stb_image_src)
+        if(NOT stb_image_src_POPULATED)
+            FetchContent_Populate(stb_image_src)
+        endif()
+        # 创建 stb_image 接口库
+        add_library(stb_image INTERFACE)
+        target_include_directories(stb_image INTERFACE ${stb_image_src_SOURCE_DIR})
+        set(STB_IMAGE_INCLUDE_DIR ${stb_image_src_SOURCE_DIR})
+        message(STATUS "STB Image headers fetched and added as INTERFACE target via FetchContent")
     endif()
-    # 创建 stb_image 接口库
-    add_library(stb_image INTERFACE)
-    target_include_directories(stb_image INTERFACE ${stb_image_src_SOURCE_DIR})
-    set(STB_IMAGE_INCLUDE_DIR ${stb_image_src_SOURCE_DIR})
-    message(STATUS "STB Image headers fetched and added as INTERFACE target via FetchContent")
 endif()
 
 # 检查 Vulkan SDK
@@ -183,19 +213,26 @@ target_include_directories(j2_visualization
 # - 构建阶段使用本项目内（或 FetchContent 提供）的 glfw 目标
 # - 安装阶段在导出包中引用 glfw::glfw，由消费者通过 find_package(glfw3) 提供
 # GLM：若使用回退，则不做 PUBLIC 链接，仅通过包含目录暴露；若非回退，则仍可通过头文件方式使用，无需链接
-# 查找主项目的静态库
-find_library(J2_ORBIT_PROPAGATOR_LIB
-    NAMES j2_orbit_propagator_static
-    PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../build/lib
-          ${CMAKE_CURRENT_SOURCE_DIR}/../build/Release
-          ${CMAKE_CURRENT_SOURCE_DIR}/../build/Debug
-    NO_DEFAULT_PATH
-)
-
-if(NOT J2_ORBIT_PROPAGATOR_LIB)
-    message(WARNING "j2_orbit_propagator_static library not found. Please build the main project first.")
+# 查找主项目的静态库（优先使用同一构建树中的目标）
+if(TARGET j2_orbit_propagator_static)
+    set(J2_PROPAGATOR_TARGET j2_orbit_propagator_static)
+    message(STATUS "Using in-tree target j2_orbit_propagator_static")
+elseif(TARGET j2_orbit_propagator)
+    set(J2_PROPAGATOR_TARGET j2_orbit_propagator)
+    message(STATUS "Using in-tree target j2_orbit_propagator (alias)")
 else()
-    message(STATUS "Found j2_orbit_propagator_static: ${J2_ORBIT_PROPAGATOR_LIB}")
+    find_library(J2_ORBIT_PROPAGATOR_LIB
+        NAMES j2_orbit_propagator_static
+        PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../build/lib
+              ${CMAKE_CURRENT_SOURCE_DIR}/../build/Release
+              ${CMAKE_CURRENT_SOURCE_DIR}/../build/Debug
+        NO_DEFAULT_PATH
+    )
+    if(NOT J2_ORBIT_PROPAGATOR_LIB)
+        message(WARNING "j2_orbit_propagator_static library not found. Please build the main project first.")
+    else()
+        message(STATUS "Found j2_orbit_propagator_static: ${J2_ORBIT_PROPAGATOR_LIB}")
+    endif()
 endif()
 
 target_link_libraries(j2_visualization
@@ -206,8 +243,14 @@ target_link_libraries(j2_visualization
         $<INSTALL_INTERFACE:glfw::glfw>
         $<BUILD_INTERFACE:stb_image>  # STB Image 库，仅在构建时链接
         ${CMAKE_DL_LIBS}  # 动态链接库支持
-        ${J2_ORBIT_PROPAGATOR_LIB}  # 主项目静态库
 )
+
+# 仅当可用时链接到主项目静态库
+if(DEFINED J2_PROPAGATOR_TARGET)
+    target_link_libraries(j2_visualization PRIVATE ${J2_PROPAGATOR_TARGET})
+elseif(J2_ORBIT_PROPAGATOR_LIB)
+    target_link_libraries(j2_visualization PRIVATE ${J2_ORBIT_PROPAGATOR_LIB})
+endif()
 # 如果使用 GLM 回退，仅在构建期加入其包含目录，避免导出时暴露构建路径
 if(GLM_FALLBACK_INCLUDE_DIR)
     target_include_directories(j2_visualization PRIVATE ${GLM_FALLBACK_INCLUDE_DIR})
