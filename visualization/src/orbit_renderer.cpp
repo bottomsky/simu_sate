@@ -114,6 +114,17 @@ VisualizationError OrbitRenderer::render(VkCommandBuffer commandBuffer, const Ca
  * @param visible 是否可见
  * @return uint32_t 轨道ID
  */
+/**
+ * 添加一条轨道并初始化其渲染参数（颜色、可见性、线宽等）
+ * 参数:
+ *  - points: 轨道点序列，按时间顺序排列，用于渲染 LINE_STRIP
+ *  - color: 轨道颜色（RGB，0~1）
+ *  - visible: 初始可见性开关
+ * 返回值:
+ *  - uint32_t: 分配的轨道唯一 ID，用于后续更新/删除
+ * 异常:
+ *  - 不抛出异常；内部错误会通过日志输出，顶点缓冲更新失败将影响后续渲染
+ */
 uint32_t OrbitRenderer::addOrbit(const std::vector<OrbitPoint>& points, 
                                 const glm::vec3& color, bool visible) {
     uint32_t orbitId = nextOrbitId++;
@@ -123,7 +134,8 @@ uint32_t OrbitRenderer::addOrbit(const std::vector<OrbitPoint>& points,
     orbitData.points = points;
     orbitData.color = color;
     orbitData.visible = visible;
-    orbitData.lineWidth = 1.0f;
+    // 使用默认线宽初始化，便于后续通过接口统一控制
+    orbitData.lineWidth = defaultLineWidth;
     
     orbits[orbitId] = orbitData;
     
@@ -263,6 +275,7 @@ void OrbitRenderer::clear() {
     updateOrbitVertexBuffer();
 }
 
+} // namespace j2_orbit_visualization
 /**
  * @brief 创建描述符集布局
  * @return VisualizationError 创建结果
@@ -787,6 +800,12 @@ void OrbitRenderer::renderOrbits(VkCommandBuffer commandBuffer, uint32_t frameIn
             continue;
         }
         
+        // 若设备支持宽线，使用轨道自定义线宽（退化到默认线宽），否则保持驱动默认（通常为1.0）
+        if (vulkanRenderer.supportsWideLines()) {
+            const float lineWidth = (orbitData.lineWidth > 0.0f ? orbitData.lineWidth : defaultLineWidth);
+            vkCmdSetLineWidth(commandBuffer, lineWidth);
+        }
+        
         uint32_t pointCount = static_cast<uint32_t>(orbitData.points.size());
         if (pointCount > 1) {
             vkCmdDraw(commandBuffer, pointCount, 1, vertexOffset, 0);
@@ -826,7 +845,8 @@ void OrbitRenderer::renderSatellites(VkCommandBuffer commandBuffer, uint32_t fra
         
         // 计算模型矩阵
         glm::mat4 model = glm::translate(glm::mat4(1.0f), satelliteData.state.position);
-        model = glm::scale(model, glm::vec3(satelliteData.state.scale));
+        // 使用渲染数据中的缩放因子而非状态中的缩放字段，避免在仅更新状态时丢失缩放设置
+        model = glm::scale(model, glm::vec3(satelliteData.scale));
         // 应用缩放变换，使卫星可见
         
         // 推送模型矩阵
@@ -931,111 +951,6 @@ void OrbitRenderer::cleanup() {
     
     // 清理数据
     orbits.clear();
-    satellites.clear();
-}
-
-// namespace j2_orbit_visualization
-
-/**
- * @brief 创建统一缓冲区
- * @return VisualizationError 创建结果
- * @exception VisualizationError::OutOfMemory 若内存分配失败
- */
-VisualizationError OrbitRenderer::createUniformBuffers() {
-    // 为每帧创建一个 UBO
-    uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    VkDeviceSize bufferSize = sizeof(OrbitUniformBufferObject);
-
-    for (size_t i = 0; i < uniformBuffers.size(); ++i) {
-        auto result = vulkanRenderer.createBuffer(
-            bufferSize,
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            uniformBuffers[i]
-        );
-        if (result != VisualizationError::Success) {
-            return result;
-        }
-    }
-
-    return VisualizationError::Success;
-}
-
-/**
- * @brief 创建描述符池
- * @return VisualizationError 创建结果
- * @exception VisualizationError::VulkanError Vulkan API 调用失败
- */
-VisualizationError OrbitRenderer::createDescriptorPool() {
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSize.descriptorCount = MAX_FRAMES_IN_FLIGHT;
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT;
-
-    if (vkCreateDescriptorPool(vulkanRenderer.getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
-        return VisualizationError::VulkanError;
-    }
-
-    return VisualizationError::Success;
-}
-
-/**
- * @brief 创建描述符集
- * @return VisualizationError 创建结果
- * @exception VisualizationError::VulkanError Vulkan API 调用失败
- */
-VisualizationError OrbitRenderer::createDescriptorSets() {
-    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
-
-    VkDescriptorSetAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = descriptorPool;
-    allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
-    allocInfo.pSetLayouts = layouts.data();
-
-    descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-    if (vkAllocateDescriptorSets(vulkanRenderer.getDevice(), &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
-        return VisualizationError::VulkanError;
-    }
-
-    for (size_t i = 0; i < descriptorSets.size(); ++i) {
-        VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = uniformBuffers[i].buffer;
-        bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(OrbitUniformBufferObject);
-
-        VkWriteDescriptorSet descriptorWrite{};
-        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrite.dstSet = descriptorSets[i];
-        descriptorWrite.dstBinding = 0;
-        descriptorWrite.dstArrayElement = 0;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrite.descriptorCount = 1;
-        descriptorWrite.pBufferInfo = &bufferInfo;
-
-        vkUpdateDescriptorSets(vulkanRenderer.getDevice(), 1, &descriptorWrite, 0, nullptr);
-    }
-
-    return VisualizationError::Success;
-}
-
-/**
- * @brief 清除所有轨道（不影响卫星）
- */
-void OrbitRenderer::clearOrbits() {
-    orbits.clear();
-    updateOrbitVertexBuffer();
-}
-
-/**
- * @brief 清除所有卫星（不影响轨道）
- */
-void OrbitRenderer::clearSatellites() {
     satellites.clear();
 }
 

@@ -30,6 +30,7 @@ param(
     [string]$BuildType = "Debug",
     [switch]$SkipBuild,
     [string]$CMAKE_ARGS = "",
+    [switch]$Offline,
     [switch]$Help
 )
 
@@ -43,11 +44,18 @@ if ($Help) {
     Write-Host "  -Clean          清理构建缓存（保留 CMakeLists.txt）" -ForegroundColor White
     Write-Host "  -BuildType      构建类型：Debug 或 Release（默认：Debug）" -ForegroundColor White
     Write-Host "  -SkipBuild      跳过编译，直接运行演示程序" -ForegroundColor White
+    Write-Host "  -Offline        离线模式：禁用 FetchContent 网络拉取（传入 -DFETCHCONTENT_FULLY_DISCONNECTED=ON）" -ForegroundColor White
+    Write-Host "  -CMAKE_ARGS     传递额外的 CMake 参数（例如：-CMAKE_ARGS \"-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake\"）" -ForegroundColor White
     Write-Host "  -Help           显示此帮助信息" -ForegroundColor White
+    Write-Host ""
+    Write-Host "说明:" -ForegroundColor Yellow
+    Write-Host "  本脚本会自动检测 vcpkg，如检测到且未显式提供 CMAKE_TOOLCHAIN_FILE，将自动添加 vcpkg 工具链。" -ForegroundColor White
+    Write-Host "  若需完全离线构建（企业网络限制），可添加 -Offline 以禁用 FetchContent 网络访问，请预先用包管理器安装 glfw3 / glm / stb 等依赖。" -ForegroundColor White
     Write-Host ""
     Write-Host "示例:" -ForegroundColor Yellow
     Write-Host "  .\build_visualization.ps1" -ForegroundColor Green
     Write-Host "  .\build_visualization.ps1 -Clean -BuildType Release" -ForegroundColor Green
+    Write-Host "  .\build_visualization.ps1 -Offline -CMAKE_ARGS \"-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows\"" -ForegroundColor Green
     Write-Host "  .\build_visualization.ps1 -SkipBuild" -ForegroundColor Green
     exit 0
 }
@@ -249,9 +257,37 @@ function Invoke-CMakeConfigure {
         "-DBUILD_EXAMPLES=ON",
         "-DBUILD_TESTS=ON",
         "-DBUILD_VISUALIZATION=ON",
-        "-DENABLE_CUDA=OFF",
-        $SourceDir
+        "-DENABLE_CUDA=OFF"
     )
+
+    # 自动检测 vcpkg 并追加工具链（若未显式提供）
+    $shouldAddToolchain = $true
+    if ($ExtraArgs) {
+        if ($ExtraArgs -match "CMAKE_TOOLCHAIN_FILE") { $shouldAddToolchain = $false }
+    }
+    if ($shouldAddToolchain) {
+        $vcpkgRoot = $env:VCPKG_ROOT
+        if (-not $vcpkgRoot) {
+            $vcpkgExe = Get-Command vcpkg -ErrorAction SilentlyContinue
+            if ($vcpkgExe) { $vcpkgRoot = Split-Path -Parent $vcpkgExe.Path }
+        }
+        if ($vcpkgRoot) {
+            $toolchain = Join-Path $vcpkgRoot "scripts/buildsystems/vcpkg.cmake"
+            if (Test-Path $toolchain) {
+                $cmakeArgs += "-DCMAKE_TOOLCHAIN_FILE=$toolchain"
+                Write-Info "已检测到 vcpkg，自动启用工具链: $toolchain"
+            }
+        }
+    }
+
+    # 离线模式（禁用 FetchContent 网络访问）
+    if ($Offline) {
+        $cmakeArgs += "-DFETCHCONTENT_FULLY_DISCONNECTED=ON"
+        Write-Info "离线模式启用：FETCHCONTENT_FULLY_DISCONNECTED=ON"
+    }
+
+    # 在最后添加源码目录
+    $cmakeArgs += $SourceDir
     
     # 添加额外的 CMake 参数
     if ($ExtraArgs) {

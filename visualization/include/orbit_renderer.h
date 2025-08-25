@@ -175,10 +175,11 @@ public:
     void setDefaultLineWidth(float lineWidth) { defaultLineWidth = lineWidth; }
     
     /**
-     * @brief 设置卫星大小
-     * @param size 卫星大小
+     * @brief 设置卫星大小（像素直径），并同步为轨道线宽
+     * @param size 卫星屏幕空间直径（像素）
+     * @note 为了满足“拖尾线宽与卫星直径一致”的需求，此接口会同时更新 defaultSatelliteSize 与 defaultLineWidth。
      */
-    void setDefaultSatelliteSize(float size) { defaultSatelliteSize = size; }
+    void setDefaultSatelliteSize(float size) { defaultSatelliteSize = size; defaultLineWidth = size; }
 
 private:
     VulkanRenderer& vulkanRenderer;       ///< Vulkan 渲染器引用
@@ -209,8 +210,8 @@ private:
     std::vector<VulkanBuffer> uniformBuffers;    ///< 通用统一缓冲区（按帧）
     
     // 渲染参数
-    float defaultLineWidth = 2.0f;       ///< 默认线宽
-    float defaultSatelliteSize = 5.0f;   ///< 默认卫星大小
+    float defaultLineWidth = 2.0f;       ///< 默认线宽（像素）
+    float defaultSatelliteSize = 5.0f;   ///< 默认卫星大小（像素直径）
 
     // 自增 ID 计数器
     uint32_t nextOrbitId = 1;            ///< 下一个可用的轨道ID
@@ -262,12 +263,12 @@ private:
     void updateOrbitVertexBuffer();
     
     /**
-     * @brief 渲染轨道
+     * @brief 渲染所有轨道
      */
     void renderOrbits(VkCommandBuffer commandBuffer, uint32_t frameIndex);
     
     /**
-     * @brief 渲染卫星
+     * @brief 渲染所有卫星
      */
     void renderSatellites(VkCommandBuffer commandBuffer, uint32_t frameIndex);
     

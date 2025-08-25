@@ -248,20 +248,24 @@ public:
      * @brief 从文件读取二进制数据（用于读取 SPIR-V 着色器）
      * @param filename 文件路径（建议使用绝对路径或相对于工作目录的路径）
      * @return std::vector<char> 文件字节内容；若读取失败返回空向量
-     * @note 本函数不抛出异常，调用者可通过返回向量是否为空判断失败
      */
     std::vector<char> readFile(const std::string& filename) const;
 
     /**
-     * @brief 由 SPIR-V 字节码创建 VkShaderModule
+     * @brief 创建着色器模块
      * @param code SPIR-V 二进制字节码
-     * @return VkShaderModule 成功返回有效句柄，失败返回 VK_NULL_HANDLE
-     * @note 创建成功后，调用者负责使用 vkDestroyShaderModule 释放资源
+     * @return VkShaderModule 着色器模块句柄
      */
     VkShaderModule createShaderModule(const std::vector<char>& code) const;
 
+    /**
+     * @brief 查询设备是否支持宽线绘制（wide lines）
+     * @return bool 若支持返回 true；否则返回 false
+     * @exception 无
+     */
+    bool supportsWideLines() const { return supportsWideLinesFlag; }
+
 private:
-    // 窗口相关
     GLFWwindow* window;                    ///< GLFW 窗口句柄
     bool ownsWindow; // 标识是否拥有窗口的所有权（是否需要清理GLFW）
     uint32_t windowWidth;                  ///< 窗口宽度
@@ -269,21 +273,17 @@ private:
     std::string windowTitle;               ///< 窗口标题
     bool framebufferResized = false;       ///< 帧缓冲区是否已调整大小
 
-    // 时间
     std::chrono::steady_clock::time_point startTime; ///< 渲染开始时间
     
-    // Vulkan 核心对象
     VkInstance instance;                   ///< Vulkan 实例
     VkDebugUtilsMessengerEXT debugMessenger; ///< 调试信使
     VkSurfaceKHR surface;                  ///< 窗口表面
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE; ///< 物理设备
     VkDevice device;                       ///< 逻辑设备
     
-    // 队列
     VkQueue graphicsQueue;                 ///< 图形队列
     VkQueue presentQueue;                  ///< 呈现队列
     
-    // 交换链
     VkSwapchainKHR swapChain;             ///< 交换链
     std::vector<VkImage> swapChainImages; ///< 交换链图像
     VkFormat swapChainImageFormat;        ///< 交换链图像格式
@@ -291,33 +291,25 @@ private:
     std::vector<VkImageView> swapChainImageViews; ///< 交换链图像视图
     std::vector<VkFramebuffer> swapChainFramebuffers; ///< 交换链帧缓冲区
     
-    // 渲染通道和管线
     VkRenderPass renderPass;              ///< 渲染通道
     
-    // 深度缓冲区
     VulkanImage depthImage;               ///< 深度图像
     
-    // 命令相关
     VkCommandPool commandPool;            ///< 命令池
     std::vector<VkCommandBuffer> commandBuffers; ///< 命令缓冲区
     
-    // 同步对象
     std::vector<VkSemaphore> imageAvailableSemaphores; ///< 图像可用信号量
     std::vector<VkSemaphore> renderFinishedSemaphores; ///< 渲染完成信号量
     std::vector<VkFence> inFlightFences;  ///< 飞行中围栏
     
-    // 帧管理
     static const int MAX_FRAMES_IN_FLIGHT = 2; ///< 最大飞行中帧数
     uint32_t currentFrame = 0;            ///< 当前帧索引
     uint32_t imageIndex = 0;              ///< 当前图像索引
     
-    // 统计信息
     RenderStats renderStats;              ///< 渲染统计
     
-    // 回调函数
     std::function<void(int, int)> resizeCallback; ///< 窗口大小改变回调
     
-    // 初始化方法
     VisualizationError initWindow();
     VisualizationError initVulkan();
     VisualizationError createInstance();
@@ -334,7 +326,6 @@ private:
     VisualizationError createCommandBuffers();
     VisualizationError createSyncObjects();
     
-    // 辅助方法
     bool checkValidationLayerSupport();
     std::vector<const char*> getRequiredExtensions();
     void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
@@ -351,17 +342,18 @@ private:
     VkCommandBuffer beginSingleTimeCommands();
     void endSingleTimeCommands(VkCommandBuffer commandBuffer);
     
-    // 清理方法
     void cleanup();
     void cleanupSwapChain();
     VisualizationError recreateSwapChain();
     
-    // 静态回调函数
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
     static VkBool32 debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
                                   VkDebugUtilsMessageTypeFlagsEXT messageType,
                                   const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
                                   void* pUserData);
+
+    // 设备能力标志
+    bool supportsWideLinesFlag = false; ///< 物理设备是否支持宽线绘制（wideLines）
 };
 
 } // namespace j2_orbit_visualization

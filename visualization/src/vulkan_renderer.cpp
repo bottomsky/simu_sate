@@ -545,7 +545,18 @@ VisualizationError VulkanRenderer::createLogicalDevice() {
         queueCreateInfos.push_back(queueCreateInfo);
     }
     
+    // 查询物理设备支持的特性，并记录是否支持宽线绘制
+    VkPhysicalDeviceFeatures supportedFeatures{};
+    vkGetPhysicalDeviceFeatures(physicalDevice, &supportedFeatures);
+    supportsWideLinesFlag = (supportedFeatures.wideLines == VK_TRUE);
+
+    // 按需启用设备特性（若支持宽线，则启用）
     VkPhysicalDeviceFeatures deviceFeatures{};
+    // 启用各向异性过滤（isDeviceSuitable 已确保支持）
+    deviceFeatures.samplerAnisotropy = VK_TRUE;
+    if (supportsWideLinesFlag) {
+        deviceFeatures.wideLines = VK_TRUE;
+    }
     
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
