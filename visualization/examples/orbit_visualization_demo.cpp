@@ -238,7 +238,7 @@ void printSatelliteStatesInfo() {
         SatelliteRenderData satelliteData;
         // 使用当前仿真时间而不是初始时间
         VisualizationError result = visualizationManager->getSatelliteDataForRendering(
-            info.taskId, currentSimulationTime, satelliteData);
+            info.taskId, currentSimulationTime, satelliteData, testSatelliteState.scale);
         
         if (result == VisualizationError::SUCCESS) {
             std::cout << "Satellite for orbit: " << info.name << " (Task ID: " << info.taskId << ")" << std::endl;
@@ -485,7 +485,7 @@ void focusOnSatellite() {
         double currentTime = 0.0; // 使用初始时间
         
         VisualizationError result = visualizationManager->getSatelliteDataForRendering(
-            info.taskId, currentTime, satelliteData);
+            info.taskId, currentTime, satelliteData, testSatelliteState.scale);
         
         if (result == VisualizationError::SUCCESS) {
             // 获取卫星位置（单位：km）
@@ -848,7 +848,7 @@ void renderLoop(double timeScale) {
         for (const auto& orbitInfo : orbitDebugInfos) {
             SatelliteRenderData satelliteData;
             VisualizationError result = visualizationManager->getSatelliteDataForRendering(
-                orbitInfo.taskId, currentSimulationTime, satelliteData);
+                orbitInfo.taskId, currentSimulationTime, satelliteData, testSatelliteState.scale);
             
             // 调试：检查getSatelliteDataForRendering的返回状态
             if (frameCount % 10 == 0) {

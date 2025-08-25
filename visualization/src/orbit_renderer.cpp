@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <array>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -275,7 +276,6 @@ void OrbitRenderer::clear() {
     updateOrbitVertexBuffer();
 }
 
-} // namespace j2_orbit_visualization
 /**
  * @brief 创建描述符集布局
  * @return VisualizationError 创建结果
@@ -854,6 +854,99 @@ void OrbitRenderer::renderSatellites(VkCommandBuffer commandBuffer, uint32_t fra
         
         vkCmdDrawIndexed(commandBuffer, satelliteIndexCount, 1, 0, 0, 0);
     }
+}
+
+/**
+ * @brief 创建统一缓冲区
+ * @return VisualizationError 创建结果
+ */
+VisualizationError OrbitRenderer::createUniformBuffers() {
+    VkDeviceSize bufferSize = sizeof(OrbitUniformBufferObject);
+    
+    uniformBuffers.resize(vulkanRenderer.getMaxFramesInFlight());
+    
+    for (size_t i = 0; i < uniformBuffers.size(); i++) {
+        auto result = vulkanRenderer.createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                                uniformBuffers[i]);
+        if (result != VisualizationError::Success) {
+            // 清理已创建的缓冲区
+            for (size_t j = 0; j < i; j++) {
+                vkDestroyBuffer(vulkanRenderer.getDevice(), uniformBuffers[j].buffer, nullptr);
+                vkFreeMemory(vulkanRenderer.getDevice(), uniformBuffers[j].memory, nullptr);
+            }
+            uniformBuffers.clear();
+            return result;
+        }
+    }
+    
+    return VisualizationError::Success;
+}
+
+/**
+ * @brief 创建描述符池
+ * @return VisualizationError 创建结果
+ */
+VisualizationError OrbitRenderer::createDescriptorPool() {
+    std::vector<VkDescriptorPoolSize> poolSizes{};
+    
+    // 统一缓冲区描述符
+    VkDescriptorPoolSize uboPoolSize{};
+    uboPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboPoolSize.descriptorCount = static_cast<uint32_t>(vulkanRenderer.getMaxFramesInFlight());
+    poolSizes.push_back(uboPoolSize);
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    poolInfo.pPoolSizes = poolSizes.data();
+    poolInfo.maxSets = static_cast<uint32_t>(vulkanRenderer.getMaxFramesInFlight());
+
+    if (vkCreateDescriptorPool(vulkanRenderer.getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+        return VisualizationError::VulkanError;
+    }
+
+    return VisualizationError::Success;
+}
+
+/**
+ * @brief 创建描述符集
+ * @return VisualizationError 创建结果
+ */
+VisualizationError OrbitRenderer::createDescriptorSets() {
+    std::vector<VkDescriptorSetLayout> layouts(vulkanRenderer.getMaxFramesInFlight(), descriptorSetLayout);
+
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
+    allocInfo.pSetLayouts = layouts.data();
+
+    descriptorSets.resize(vulkanRenderer.getMaxFramesInFlight());
+    if (vkAllocateDescriptorSets(vulkanRenderer.getDevice(), &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+        return VisualizationError::VulkanError;
+    }
+
+    for (size_t i = 0; i < descriptorSets.size(); ++i) {
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = uniformBuffers[i].buffer;
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(OrbitUniformBufferObject);
+
+        std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
+
+        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[0].dstSet = descriptorSets[i];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].dstArrayElement = 0;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].pBufferInfo = &bufferInfo;
+
+        vkUpdateDescriptorSets(vulkanRenderer.getDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+    }
+
+    return VisualizationError::Success;
 }
 
 /**

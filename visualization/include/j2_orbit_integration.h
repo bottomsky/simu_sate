@@ -333,11 +333,13 @@ public:
      * @param taskId 轨道任务ID
      * @param time 目标时间
      * @param satelliteData 输出卫星数据
+     * @param scale 卫星缩放因子，默认为1.0f
      * @return VisualizationError 获取结果
      */
     VisualizationError getSatelliteDataForRendering(uint32_t taskId,
                                                    double time,
-                                                   SatelliteRenderData& satelliteData);
+                                                   SatelliteRenderData& satelliteData,
+                                                   float scale = 1.0f);
     
     /**
      * @brief 移除轨道任务

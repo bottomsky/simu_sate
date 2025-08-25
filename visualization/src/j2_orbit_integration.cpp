@@ -447,7 +447,8 @@ VisualizationError OrbitVisualizationManager::getOrbitDataForRendering(uint32_t 
  */
 VisualizationError OrbitVisualizationManager::getSatelliteDataForRendering(uint32_t taskId,
                                                                            double time,
-                                                                           SatelliteRenderData& satelliteData) {
+                                                                           SatelliteRenderData& satelliteData,
+                                                                           float scale) {
     auto it = orbitTasks.find(taskId);
     if (it == orbitTasks.end()) {
         return VisualizationError::UNKNOWN_ERROR;
@@ -480,7 +481,7 @@ VisualizationError OrbitVisualizationManager::getSatelliteDataForRendering(uint3
     satelliteData.state = currentState;
     satelliteData.state.timestamp = time;
     satelliteData.color = task.color;
-    satelliteData.scale = 1.0f; // 使用默认缩放
+    satelliteData.scale = scale; // 使用传入的缩放参数
     satelliteData.visible = true;
     
     // 注意：轨道元素信息已通过computeStateAtTime和stateToElements计算，

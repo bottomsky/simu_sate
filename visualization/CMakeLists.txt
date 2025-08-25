@@ -346,6 +346,7 @@ if(BUILD_EXAMPLES)
     target_link_libraries(orbit_visualization_demo
         PRIVATE
             j2_visualization
+            glfw
     )
     
     # 设置工作目录（用于调试）
