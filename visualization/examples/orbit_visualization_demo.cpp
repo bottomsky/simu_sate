@@ -103,6 +103,7 @@ struct SatelliteTrail {
     size_t maxTrailPoints = 200;         // 最大拖尾点数
 };
 static std::map<uint32_t, SatelliteTrail> satelliteTrails; // 卫星ID到拖尾数据的映射
+static std::map<uint32_t, uint32_t> satelliteTrailOrbitIds; // 卫星ID到拖尾轨道ID的映射
 
 /**
  * @brief 更新卫星拖尾数据
@@ -110,6 +111,23 @@ static std::map<uint32_t, SatelliteTrail> satelliteTrails; // 卫星ID到拖尾�
  * @param position 当前位置
  * @param timestamp 当前时间戳
  * @param color 拖尾颜色
+ */
+/**
+ * @brief 更新卫星拖尾数据（位置-时间序列）
+ *
+ * 该函数会将新的卫星位置与时间戳追加到对应卫星的拖尾序列中，并基于最大时长和最大点数进行裁剪。
+ *
+ * 参数：
+ * - satelliteId: 卫星ID
+ * - position: 当前位置（单位：km）
+ * - timestamp: 当前仿真时间（单位：秒）
+ * - color: 拖尾颜色（RGB，范围[0,1]）
+ *
+ * 返回值：
+ * - 无（void）
+ *
+ * 异常：
+ * - 无（不抛出异常）
  */
 void updateSatelliteTrail(uint32_t satelliteId, const glm::vec3& position, float timestamp, const glm::vec3& color) {
     auto& trail = satelliteTrails[satelliteId];
@@ -142,16 +160,34 @@ void updateSatelliteTrail(uint32_t satelliteId, const glm::vec3& position, float
  * @param commandBuffer Vulkan命令缓冲区
  * @param cameraParams 相机参数
  */
+/**
+ * @brief 渲染卫星拖尾为动态轨道线
+ *
+ * 利用 OrbitRenderer 的 addOrbit/updateOrbit 接口，将每颗卫星的拖尾点序列作为一条动态轨道提交。
+ * 首次出现的卫星会创建一条新的“拖尾轨道”，后续帧对同一卫星则只更新对应轨道的点集。
+ *
+ * 参数：
+ * - commandBuffer: Vulkan 命令缓冲区（此函数内部不直接使用，由 OrbitRenderer::render 统一提交）
+ * - cameraParams: 相机参数（此函数内部不直接使用）
+ *
+ * 返回值：
+ * - 无（void）
+ *
+ * 异常：
+ * - 无（不抛出异常）。如 OrbitRenderer 未初始化则直接返回。
+ */
 void renderSatelliteTrails(VkCommandBuffer commandBuffer, const CameraParams& cameraParams) {
-    // 这里需要实现拖尾线条的渲染
-    // 由于当前的轨道渲染器主要处理轨道和卫星球体，
-    // 我们可以通过OrbitRenderer的线条渲染功能来实现拖尾
-    
+    // 若渲染器未就绪，直接返回
+    if (!orbitRenderer) {
+        return;
+    }
+
     for (const auto& [satelliteId, trail] : satelliteTrails) {
         if (trail.positions.size() < 2) continue; // 至少需要2个点才能画线
-        
-        // 将拖尾位置转换为OrbitPoint格式
+
+        // 将拖尾位置转换为 OrbitPoint 格式
         std::vector<OrbitPoint> trailPoints;
+        trailPoints.reserve(trail.positions.size());
         for (size_t i = 0; i < trail.positions.size(); ++i) {
             OrbitPoint point;
             point.position = trail.positions[i];
@@ -159,23 +195,29 @@ void renderSatelliteTrails(VkCommandBuffer commandBuffer, const CameraParams& ca
             point.timestamp = trail.timestamps[i];
             trailPoints.push_back(point);
         }
-        
-        // 注意：这里需要OrbitRenderer支持动态线条渲染
-        // 当前实现中，我们先通过调试输出来验证拖尾数据是否正确
-        static int trailDebugCount = 0;
-        if (trailDebugCount % 120 == 0) { // 每120帧输出一次拖尾调试信息
-            std::cout << "\n[TRAIL DEBUG] Satellite " << satelliteId << " trail:" << std::endl;
-            std::cout << "  Trail points: " << trail.positions.size() << std::endl;
-            if (!trail.positions.empty()) {
-                std::cout << "  Latest position: (" << trail.positions.back().x 
-                         << ", " << trail.positions.back().y 
-                         << ", " << trail.positions.back().z << ") km" << std::endl;
-                std::cout << "  Trail color: RGB(" << trail.color.r 
-                         << ", " << trail.color.g 
-                         << ", " << trail.color.b << ")" << std::endl;
+
+        // 为该卫星创建或更新一条“拖尾轨道”
+        auto it = satelliteTrailOrbitIds.find(satelliteId);
+        if (it == satelliteTrailOrbitIds.end()) {
+            // 创建新的“拖尾轨道”并记录映射
+            uint32_t orbitId = orbitRenderer->addOrbit(trailPoints, trail.color, true);
+            satelliteTrailOrbitIds[satelliteId] = orbitId;
+            // 调试输出：首次创建拖尾轨道
+            std::cout << "[TRAIL] Created trail orbitId=" << orbitId
+                      << " for satelliteId=" << satelliteId
+                      << " points=" << trailPoints.size() << std::endl;
+        } else {
+            // 更新已存在的拖尾轨道
+            orbitRenderer->updateOrbit(it->second, trailPoints);
+            // 调试输出：节流打印更新信息
+            static int trailLogCounter = 0;
+            trailLogCounter++;
+            if (trailLogCounter % 60 == 0) {
+                std::cout << "[TRAIL] Updated trail orbitId=" << it->second
+                          << " for satelliteId=" << satelliteId
+                          << " points=" << trailPoints.size() << std::endl;
             }
         }
-        trailDebugCount++;
     }
 }
 
@@ -622,6 +664,8 @@ bool initializeVulkan() {
         
         // 创建轨道渲染器
     orbitRenderer = std::make_unique<OrbitRenderer>(*vulkanRenderer);
+    // 设置默认轨道与拖尾线宽以提升可见性（单位：像素）
+    orbitRenderer->setDefaultLineWidth(3.0f);
         if (orbitRenderer->initialize() != VisualizationError::SUCCESS) {
             std::cerr << "Failed to initialize Orbit renderer" << std::endl;
             return false;
@@ -997,10 +1041,9 @@ void renderLoop(double timeScale) {
             }
             
             // 渲染轨道
-            orbitRenderer->render(vulkanRenderer->getCurrentCommandBuffer(), cameraParams);
-            
-            // 渲染卫星拖尾
+            // 先更新/提交拖尾到 OrbitRenderer，再统一渲染，避免一帧延迟
             renderSatelliteTrails(vulkanRenderer->getCurrentCommandBuffer(), cameraParams);
+            orbitRenderer->render(vulkanRenderer->getCurrentCommandBuffer(), cameraParams);
             
             // 渲染管线状态检查（每60帧输出一次）
             if (frameCount % 60 == 0) {
