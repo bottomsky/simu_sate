@@ -1,0 +1,11 @@
+[project]
+name = "j2-perturbation-orbit-propagator"
+version = "0.0.0"
+description = "J2 Orbit Propagator Python bindings and tests"
+requires-python = ">=3.10"
+dependencies = [
+    "pytest>=8.4.2",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"

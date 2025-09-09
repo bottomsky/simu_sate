@@ -55,7 +55,7 @@ VkVertexInputBindingDescription j2_orbit_visualization::Vertex::getBindingDescri
  * @return std::vector<VkVertexInputAttributeDescription> 属性描述数组
  */
 std::vector<VkVertexInputAttributeDescription> j2_orbit_visualization::Vertex::getAttributeDescriptions() {
-    std::vector<VkVertexInputAttributeDescription> attributeDescriptions(3);
+    std::vector<VkVertexInputAttributeDescription> attributeDescriptions(4);
 
     // 位置属性
     attributeDescriptions[0].binding = 0;
@@ -69,11 +69,17 @@ std::vector<VkVertexInputAttributeDescription> j2_orbit_visualization::Vertex::g
     attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[1].offset = offsetof(j2_orbit_visualization::Vertex, normal);
 
-    // 纹理坐标属性
+    // 颜色属性
     attributeDescriptions[2].binding = 0;
     attributeDescriptions[2].location = 2;
-    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-    attributeDescriptions[2].offset = offsetof(j2_orbit_visualization::Vertex, texCoord);
+    attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[2].offset = offsetof(j2_orbit_visualization::Vertex, color);
+
+    // 纹理坐标属性
+    attributeDescriptions[3].binding = 0;
+    attributeDescriptions[3].location = 3;
+    attributeDescriptions[3].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[3].offset = offsetof(j2_orbit_visualization::Vertex, texCoord);
 
     return attributeDescriptions;
 }

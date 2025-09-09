@@ -229,6 +229,11 @@ if ($dllFiles) {
     Write-Host "复制动态库到build/Release目录..." -ForegroundColor Yellow
     foreach ($dll in $dllFiles) {
         $destPath = Join-Path $BinDir $dll.Name
+        $destResolved = (Resolve-Path $destPath -ErrorAction SilentlyContinue)
+        if ($destResolved -and ($dll.FullName -ieq $destResolved.Path)) {
+            Write-Host "  跳过(源=目标): $($dll.FullName)" -ForegroundColor DarkYellow
+            continue
+        }
         Copy-Item $dll.FullName $destPath -Force
         Write-Host "  复制: $($dll.Name) -> $destPath" -ForegroundColor White
     }
@@ -238,6 +243,11 @@ if ($libFiles) {
     Write-Host "复制静态库到build/Release目录..." -ForegroundColor Yellow
     foreach ($lib in $libFiles) {
         $destPath = Join-Path $BinDir $lib.Name
+        $destResolved = (Resolve-Path $destPath -ErrorAction SilentlyContinue)
+        if ($destResolved -and ($lib.FullName -ieq $destResolved.Path)) {
+            Write-Host "  跳过(源=目标): $($lib.FullName)" -ForegroundColor DarkYellow
+            continue
+        }
         Copy-Item $lib.FullName $destPath -Force
         Write-Host "  复制: $($lib.Name) -> $destPath" -ForegroundColor White
     }
@@ -247,6 +257,11 @@ if ($exeFiles) {
     Write-Host "复制可执行文件到build/Release目录..." -ForegroundColor Yellow
     foreach ($exe in $exeFiles) {
         $destPath = Join-Path $BinDir $exe.Name
+        $destResolved = (Resolve-Path $destPath -ErrorAction SilentlyContinue)
+        if ($destResolved -and ($exe.FullName -ieq $destResolved.Path)) {
+            Write-Host "  跳过(源=目标): $($exe.FullName)" -ForegroundColor DarkYellow
+            continue
+        }
         Copy-Item $exe.FullName $destPath -Force
         Write-Host "  复制: $($exe.Name) -> $destPath" -ForegroundColor White
     }

@@ -16,6 +16,7 @@ namespace j2_orbit_visualization {
 struct Vertex {
     glm::vec3 position;    ///< 顶点位置
     glm::vec3 normal;      ///< 法线向量
+    glm::vec3 color;       ///< 顶点颜色
     glm::vec2 texCoord;    ///< 纹理坐标
     
     /**

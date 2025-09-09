@@ -533,7 +533,7 @@ VisualizationError OrbitRenderer::createSatellitePipeline() {
     dynamicState.pDynamicStates = dynamicStates.data();
 
     VkPushConstantRange pushConstantRange{};
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
     pushConstantRange.size = sizeof(glm::mat4);
 
@@ -613,6 +613,9 @@ VisualizationError OrbitRenderer::createSatelliteGeometry() {
             
             // 法线（对于球体，法线就是归一化的位置向量）
             vertex.normal = glm::normalize(vertex.position);
+            
+            // 颜色（默认白色，实际颜色通过uniform传递）
+            vertex.color = glm::vec3(1.0f, 1.0f, 1.0f);
             
             // 纹理坐标
             vertex.texCoord.x = (float)lon / longitudeSegments;
