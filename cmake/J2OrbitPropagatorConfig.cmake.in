@@ -1,0 +1,15 @@
+# J2OrbitPropagator CMake package configuration
+
+@PACKAGE_INIT@
+
+# Exported targets for this package
+include("${CMAKE_CURRENT_LIST_DIR}/J2OrbitPropagatorTargets.cmake")
+
+# Provide include directory variable for consumers that rely on variables
+get_filename_component(_J2OrbitPropagator_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+set(J2OrbitPropagator_INCLUDE_DIRS "${_J2OrbitPropagator_PREFIX}/include")
+
+# Backward compatibility variables
+set(J2OrbitPropagator_VERSION "@PROJECT_VERSION@")
+
+set(J2OrbitPropagator_FOUND TRUE)

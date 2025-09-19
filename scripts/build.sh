@@ -14,6 +14,7 @@ ENABLE_CUDA="OFF"
 GENERATOR="Unix Makefiles"
 VERBOSE=false
 JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+TOOLCHAIN=""
 
 # 颜色定义
 RED='\033[0;31m'
@@ -56,6 +57,7 @@ J2 轨道传播器构建脚本
   --cuda               强制启用CUDA支持
   --generator <gen>    指定CMake生成器（默认: "Unix Makefiles"）
   --jobs <num>         并行编译作业数（默认: 自动检测）
+  --toolchain <path|mingw|aarch64> 指定 CMake 工具链文件或关键字（mingw/aarch64）
   --verbose            显示详细构建信息
   --help               显示此帮助信息
 
@@ -112,6 +114,10 @@ while [[ $# -gt 0 ]]; do
             JOBS="$2"
             shift 2
             ;;
+        --toolchain)
+            TOOLCHAIN="$2"
+            shift 2
+            ;;
         --verbose)
             VERBOSE=true
             shift
@@ -145,6 +151,7 @@ print_info "构建示例: $BUILD_EXAMPLES"
 print_info "构建测试: $BUILD_TESTS"
 print_info "构建可视化: $BUILD_VISUALIZATION"
 print_info "启用CUDA: $ENABLE_CUDA"
+print_info "工具链: ${TOOLCHAIN:-<none>}"
 print_info "========================================"
 
 # 检查CMake是否可用
@@ -210,6 +217,19 @@ CMAKE_ARGS=(
     -DBUILD_VISUALIZATION="$BUILD_VISUALIZATION"
     -DENABLE_CUDA="$ENABLE_CUDA"
 )
+
+# 解析工具链关键字并传入 CMAKE_TOOLCHAIN_FILE
+if [[ -n "$TOOLCHAIN" ]]; then
+    if [[ "$TOOLCHAIN" == "mingw" ]]; then
+        TOOLCHAIN_PATH="$PROJECT_ROOT/cmake/toolchains/windows-mingw.cmake"
+    elif [[ "$TOOLCHAIN" == "aarch64" || "$TOOLCHAIN" == "linux-aarch64" ]]; then
+        TOOLCHAIN_PATH="$PROJECT_ROOT/cmake/toolchains/linux-aarch64.cmake"
+    else
+        TOOLCHAIN_PATH="$TOOLCHAIN"
+    fi
+    print_info "使用工具链文件: $TOOLCHAIN_PATH"
+    CMAKE_ARGS+=( -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_PATH" )
+fi
 
 # 运行CMake配置
 print_info "配置项目..."

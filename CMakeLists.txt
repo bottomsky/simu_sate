@@ -48,7 +48,12 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 if(MSVC)
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/W4> $<$<COMPILE_LANGUAGE:CXX>:/arch:AVX2>)
 else()
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wall> $<$<COMPILE_LANGUAGE:CXX>:-Wextra> $<$<COMPILE_LANGUAGE:CXX>:-pedantic> $<$<COMPILE_LANGUAGE:CXX>:-mavx2> $<$<COMPILE_LANGUAGE:CXX>:-mfma> $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-variable> $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-but-set-variable>)
+    # 基础告警选项（非 MSVC）
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wall> $<$<COMPILE_LANGUAGE:CXX>:-Wextra> $<$<COMPILE_LANGUAGE:CXX>:-pedantic> $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-variable> $<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-but-set-variable>)
+    # 仅在 x86/x64 架构上启用 AVX2/FMA 指令集
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i.86")
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-mavx2> $<$<COMPILE_LANGUAGE:CXX>:-mfma>)
+    endif()
 endif()
 
 # 使用项目中的Eigen库
