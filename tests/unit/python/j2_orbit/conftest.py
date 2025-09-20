@@ -63,6 +63,10 @@ class CStateVector(Structure):
     _fields_ = [("r", c_double * 3), ("v", c_double * 3)]
 
 
+DoubleArray3 = c_double * 3
+DoubleArray9 = c_double * 9
+
+
 class CCompactOrbitalElements(Structure):
     _fields_ = [
         ("a", c_double),
@@ -118,6 +122,30 @@ def j2_lib():
     lib.j2_eci_to_ecef_position.restype = c_int
     lib.j2_ecef_to_eci_position.argtypes = [POINTER(c_double), c_double, POINTER(c_double)]
     lib.j2_ecef_to_eci_position.restype = c_int
+    lib.j2_eci_to_ecef_velocity.argtypes = [POINTER(c_double), POINTER(c_double), c_double, POINTER(c_double)]
+    lib.j2_eci_to_ecef_velocity.restype = c_int
+    lib.j2_ecef_to_eci_velocity.argtypes = [POINTER(c_double), POINTER(c_double), c_double, POINTER(c_double)]
+    lib.j2_ecef_to_eci_velocity.restype = c_int
+    lib.j2_ecef_to_geodetic.argtypes = [POINTER(c_double), POINTER(c_double)]
+    lib.j2_ecef_to_geodetic.restype = c_int
+    lib.j2_geodetic_to_ecef.argtypes = [POINTER(c_double), POINTER(c_double)]
+    lib.j2_geodetic_to_ecef.restype = c_int
+    lib.j2_eci_to_geodetic.argtypes = [POINTER(c_double), c_double, POINTER(c_double)]
+    lib.j2_eci_to_geodetic.restype = c_int
+    lib.j2_geodetic_to_eci.argtypes = [POINTER(c_double), c_double, POINTER(c_double)]
+    lib.j2_geodetic_to_eci.restype = c_int
+    lib.j2_rtn_to_eci_rotation.argtypes = [POINTER(c_double), POINTER(c_double), POINTER(c_double)]
+    lib.j2_rtn_to_eci_rotation.restype = c_int
+    lib.j2_eci_to_rtn_rotation.argtypes = [POINTER(c_double), POINTER(c_double), POINTER(c_double)]
+    lib.j2_eci_to_rtn_rotation.restype = c_int
+    lib.j2_eci_to_rtn_vector.argtypes = [POINTER(c_double), POINTER(c_double), POINTER(c_double), POINTER(c_double)]
+    lib.j2_eci_to_rtn_vector.restype = c_int
+    lib.j2_rtn_to_eci_vector.argtypes = [POINTER(c_double), POINTER(c_double), POINTER(c_double), POINTER(c_double)]
+    lib.j2_rtn_to_eci_vector.restype = c_int
+    lib.j2_compute_gmst.argtypes = [c_double, POINTER(c_double)]
+    lib.j2_compute_gmst.restype = c_int
+    lib.j2_normalize_angle.argtypes = [c_double]
+    lib.j2_normalize_angle.restype = c_double
 
     # 星座接口
     lib.constellation_propagator_create.argtypes = [c_double]

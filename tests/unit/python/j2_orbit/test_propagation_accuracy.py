@@ -61,18 +61,20 @@ def test_single_satellite_propagation_accuracy(j2_lib, j2_propagator, initial_el
     ],
 )
 def test_impulse_effect_direction(j2_lib, constellation, delta_v, axis):
-    # 在当前历元施加脉冲，检查速度分量对应轴增量显著
+    # 在当前历元施加脉冲前记录速度分量
+    base_state = CStateVector()
+    ret = j2_lib.constellation_propagator_get_satellite_state(constellation, ctypes.c_size_t(0), ctypes.byref(base_state))
+    assert ret == 0
+    base_component = float(base_state.v[axis])
+
     dv = (ctypes.c_double * 3)(*delta_v)
     ret = j2_lib.constellation_propagator_apply_impulse_to_constellation(constellation, dv, ctypes.c_size_t(1), ctypes.c_double(0.0))
-    assert ret == 0
-
-    # 施加脉冲后推进 1s，保证状态更新
-    ret = j2_lib.constellation_propagator_propagate(constellation, ctypes.c_double(1.0))
     assert ret == 0
 
     state = CStateVector()
     ret = j2_lib.constellation_propagator_get_satellite_state(constellation, ctypes.c_size_t(0), ctypes.byref(state))
     assert ret == 0
 
-    # 仅比较对应轴速度增量是否为正（方向性），不强行约束量值（由库内部实现确定）
-    assert state.v[axis] > 0.0
+    # 对应轴速度增量应与给定脉冲方向一致
+    delta_component = float(state.v[axis]) - base_component
+    assert delta_component > 0.0
