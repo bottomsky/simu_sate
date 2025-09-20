@@ -57,7 +57,7 @@ else()
 endif()
 
 # 使用系统或拉取的 Eigen（替代硬编码的 lib/eigen 路径）
-find_package(Eigen3 QUIET)
+find_package(Eigen3 QUIET MODULE)
 if(NOT Eigen3_FOUND)
     include(FetchContent)
     FetchContent_Declare(
@@ -66,10 +66,12 @@ if(NOT Eigen3_FOUND)
         TIMEOUT 30
     )
     FetchContent_MakeAvailable(eigen)
-    add_library(Eigen3::Eigen INTERFACE IMPORTED)
-    set_target_properties(Eigen3::Eigen PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${eigen_SOURCE_DIR}"
-    )
+    if(NOT TARGET Eigen3::Eigen)
+        add_library(Eigen3::Eigen INTERFACE IMPORTED)
+        set_target_properties(Eigen3::Eigen PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${eigen_SOURCE_DIR}"
+        )
+    endif()
 endif()
 
 # 包含目录（仅项目头文件）

@@ -82,6 +82,10 @@ class CStateVector(Structure):
         )
 
 
+DoubleArray3 = c_double * 3
+DoubleArray9 = c_double * 9
+
+
 # 定义函数原型
 # 创建和销毁函数
 j2_lib.j2_propagator_create.argtypes = [POINTER(COrbitalElements)]
@@ -120,8 +124,19 @@ j2_lib.j2_propagator_set_step_size.restype = c_int
 j2_lib.j2_propagator_get_step_size.argtypes = [c_void_p, POINTER(c_double)]
 j2_lib.j2_propagator_get_step_size.restype = c_int
 
-j2_lib.j2_propagator_set_adaptive_step_size.argtypes = [c_void_p, c_int]
-j2_lib.j2_propagator_set_adaptive_step_size.restype = c_int
+if hasattr(j2_lib, "j2_propagator_apply_impulse"):
+    j2_lib.j2_propagator_apply_impulse.argtypes = [
+        c_void_p,
+        POINTER(COrbitalElements),
+        POINTER(c_double),
+        c_double,
+        POINTER(COrbitalElements),
+    ]
+    j2_lib.j2_propagator_apply_impulse.restype = c_int
+
+if hasattr(j2_lib, "j2_propagator_set_adaptive_parameters"):
+    j2_lib.j2_propagator_set_adaptive_parameters.argtypes = [c_void_p, c_double, c_double, c_double]
+    j2_lib.j2_propagator_set_adaptive_parameters.restype = c_int
 
 # 坐标转换函数
 j2_lib.j2_eci_to_ecef_position.argtypes = [
@@ -295,6 +310,50 @@ class J2OrbitPropagator:
         if ret != 0:
             raise RuntimeError("设置自适应步长失败")
 
+
+    def set_adaptive_parameters(self, tolerance, min_step, max_step):
+        """配置自适应步长控制参数。"""
+        if not hasattr(j2_lib, "j2_propagator_set_adaptive_parameters"):
+            raise NotImplementedError("动态库未导出 j2_propagator_set_adaptive_parameters")
+        ret = j2_lib.j2_propagator_set_adaptive_parameters(
+            self.handle, tolerance, min_step, max_step
+        )
+        if ret != 0:
+            raise RuntimeError("设置自适应步长参数失败")
+
+    def apply_impulse(self, elements, delta_v, impulse_time):
+        """对轨道要素施加瞬时脉冲，并返回更新后的要素。"""
+        if not hasattr(j2_lib, "j2_propagator_apply_impulse"):
+            raise NotImplementedError("动态库未导出 j2_propagator_apply_impulse")
+        c_elements = COrbitalElements(
+            a=elements["a"],
+            e=elements["e"],
+            i=elements["i"],
+            O=elements["O"],
+            w=elements["w"],
+            M=elements["M"],
+            t=elements.get("t", impulse_time),
+        )
+        dv_array = DoubleArray3(*delta_v)
+        result = COrbitalElements()
+        ret = j2_lib.j2_propagator_apply_impulse(
+            self.handle,
+            ctypes.byref(c_elements),
+            dv_array,
+            c_double(impulse_time),
+            ctypes.byref(result),
+        )
+        if ret != 0:
+            raise RuntimeError("施加脉冲失败")
+        return {
+            "a": result.a,
+            "e": result.e,
+            "i": result.i,
+            "O": result.O,
+            "w": result.w,
+            "M": result.M,
+            "t": result.t,
+        }
 
 def eci_to_ecef_position(eci_position, utc_seconds):
     """ECI到ECEF坐标转换"""
