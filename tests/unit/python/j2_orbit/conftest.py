@@ -34,10 +34,10 @@ def _resolve_library_path():
     repo_root = here.parents[4]  # tests/unit/python/j2_orbit -> 上溯 4 层到 simu_sate 目录
 
     candidates = [
+        str(repo_root / "example" / lib_name),
         str(repo_root / "build" / "Release" / lib_name),
         str(repo_root / "build" / "Debug" / lib_name),
         str(repo_root / "build" / lib_name),
-        str((repo_root / "example").resolve() / lib_name),
         lib_name,  # 系统路径
     ]
     for p in candidates:
