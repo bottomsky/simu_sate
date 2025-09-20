@@ -17,6 +17,29 @@ import pytest
 from conftest import COrbitalElements, CStateVector
 
 
+def _j2_long_term_rates(mu, a, e, inc):
+    J2 = 1.08263e-3
+    RE = 6378137.0
+
+    n = math.sqrt(mu / (a**3))
+    p = a * (1.0 - e * e)
+    factor = 1.5 * J2 * n * (RE / p) ** 2
+    cos_i = math.cos(inc)
+    cos_i_sq = cos_i * cos_i
+    sqrt_term = math.sqrt(max(0.0, 1.0 - e * e))
+
+    return {
+        "O": -factor * cos_i,
+        "w": 0.5 * factor * (5.0 * cos_i_sq - 1.0),
+        "M": n + 0.5 * factor * sqrt_term * (3.0 * cos_i_sq - 1.0),
+    }
+
+
+def _angle_diff(a, b):
+    diff = abs(a - b) % (2.0 * math.pi)
+    return min(diff, 2.0 * math.pi - diff)
+
+
 @pytest.mark.parametrize("fraction", [0.25, 0.5, 1.0])
 def test_single_satellite_propagation_accuracy(j2_lib, j2_propagator, initial_elements, tolerances, fraction):
     mu = 3.986004418e14
@@ -37,6 +60,17 @@ def test_single_satellite_propagation_accuracy(j2_lib, j2_propagator, initial_el
     # i/e 在短期内变化较小
     assert abs(result.i - initial_elements["i"]) < 1e-4
     assert abs(result.e - initial_elements["e"]) < 1e-4
+
+    # 验证 J2 长期平均漂移方向与量值
+    rates = _j2_long_term_rates(mu, a, initial_elements["e"], initial_elements["i"])
+    elapsed = T * fraction
+    expected_O = (initial_elements["O"] + rates["O"] * elapsed) % (2.0 * math.pi)
+    expected_w = (initial_elements["w"] + rates["w"] * elapsed) % (2.0 * math.pi)
+    expected_M = (initial_elements["M"] + rates["M"] * elapsed) % (2.0 * math.pi)
+
+    assert _angle_diff(result.O, expected_O) < 5e-5
+    assert _angle_diff(result.w, expected_w) < 5e-5
+    assert _angle_diff(result.M, expected_M) < 5e-5
 
     # 要素->状态->要素往返一致性
     state = CStateVector()

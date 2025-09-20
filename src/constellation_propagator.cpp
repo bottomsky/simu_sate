@@ -151,17 +151,18 @@ void ConstellationPropagator::propagateScalar(double dt) {
             if (std::abs(1.0 - ec * ec) < EPSILON) {
                 return {0.0, 0.0, 0.0}; // 避免奇异性
             }
-            
+
             double n = std::sqrt(MU / (a * a * a));
             double p = a * (1.0 - ec * ec);
             double factor = (3.0 / 2.0) * J2 * n * (RE / p) * (RE / p);
             double cos_i = std::cos(inc);
-            double sin_i_sq = std::sin(inc) * std::sin(inc);
-            
+            double cos_i_sq = cos_i * cos_i;
+            double sin_i_sq = 1.0 - cos_i_sq;
+
             double dO_dt = -factor * cos_i;
-            double dw_dt = factor * (2.5 * sin_i_sq - 2.0);
-            double dM_dt = n - factor * std::sqrt(1.0 - ec * ec) * (1.5 * sin_i_sq - 0.5);
-            
+            double dw_dt = 0.5 * factor * (5.0 * cos_i_sq - 1.0);
+            double dM_dt = n + 0.5 * factor * std::sqrt(1.0 - ec * ec) * (3.0 * cos_i_sq - 1.0);
+
             return {dO_dt, dw_dt, dM_dt};
         };
         
@@ -205,15 +206,10 @@ void ConstellationPropagator::propagateSIMD(double dt) {
     const __m256d re_vec = _mm256_set1_pd(RE);
     const __m256d j2_vec = _mm256_set1_pd(J2);
     const __m256d dt_vec = _mm256_set1_pd(dt);
-    const __m256d dt_half_vec = _mm256_set1_pd(dt / 2.0);
-    const __m256d three = _mm256_set1_pd(3.0);
     const __m256d two = _mm256_set1_pd(2.0);
-    const __m256d one_point_five = _mm256_set1_pd(1.5);
-    const __m256d two_point_five = _mm256_set1_pd(2.5);
     const __m256d half = _mm256_set1_pd(0.5);
     const __m256d six = _mm256_set1_pd(6.0);
     const __m256d one = _mm256_set1_pd(1.0);
-    const __m256d epsilon = _mm256_set1_pd(EPSILON);
     
     // SIMD RK4积分器
     auto computeDerivativesSIMD = [&](__m256d a_vec, __m256d e_vec, __m256d i_vec) -> std::array<__m256d, 3> {
@@ -229,26 +225,26 @@ void ConstellationPropagator::propagateSIMD(double dt) {
         __m256d p = _mm256_mul_pd(a_vec, one_minus_e2);
         __m256d re_over_p = _mm256_div_pd(re_vec, p);
         __m256d re_over_p_sq = _mm256_mul_pd(re_over_p, re_over_p);
-        __m256d factor_norm = _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(one_point_five, j2_vec), mean_motion_vec), re_over_p_sq);
+        __m256d factor_norm = _mm256_mul_pd(
+            _mm256_mul_pd(_mm256_mul_pd(_mm256_set1_pd(1.5), j2_vec), mean_motion_vec), re_over_p_sq);
         
         // 计算三角函数
-        __m256d cos_i, sin_i;
-        // SIMD 三角函数计算（使用标准库）
+        __m256d cos_i;
         alignas(32) double i_vals[4];
         _mm256_store_pd(i_vals, i_vec);
         cos_i = _mm256_set_pd(std::cos(i_vals[3]), std::cos(i_vals[2]), std::cos(i_vals[1]), std::cos(i_vals[0]));
-        sin_i = _mm256_set_pd(std::sin(i_vals[3]), std::sin(i_vals[2]), std::sin(i_vals[1]), std::sin(i_vals[0]));
-        
-        __m256d sin2_i = _mm256_mul_pd(sin_i, sin_i);
-        
+        __m256d cos2_i = _mm256_mul_pd(cos_i, cos_i);
+
         // 计算导数
         __m256d dO_dt = _mm256_mul_pd(_mm256_sub_pd(_mm256_setzero_pd(), factor_norm), cos_i);
-        __m256d dw_dt = _mm256_mul_pd(factor_norm, _mm256_sub_pd(_mm256_mul_pd(two_point_five, sin2_i), two));
+        __m256d dw_dt = _mm256_mul_pd(_mm256_mul_pd(half, factor_norm),
+                                      _mm256_sub_pd(_mm256_mul_pd(_mm256_set1_pd(5.0), cos2_i), one));
         __m256d sqrt_one_minus_e2 = _mm256_sqrt_pd(one_minus_e2);
-        __m256d dM_term = _mm256_mul_pd(factor_norm, _mm256_mul_pd(sqrt_one_minus_e2, 
-                                       _mm256_sub_pd(_mm256_mul_pd(one_point_five, sin2_i), half)));
-        __m256d dM_dt = _mm256_sub_pd(mean_motion_vec, dM_term);
-        
+        __m256d dM_term = _mm256_mul_pd(_mm256_mul_pd(half, factor_norm),
+                                        _mm256_mul_pd(sqrt_one_minus_e2,
+                                                      _mm256_sub_pd(_mm256_mul_pd(_mm256_set1_pd(3.0), cos2_i), one)));
+        __m256d dM_dt = _mm256_add_pd(mean_motion_vec, dM_term);
+
         return {dO_dt, dw_dt, dM_dt};
     };
     
@@ -859,17 +855,19 @@ double ConstellationPropagator::estimateLocalErrorScalar(const CompactOrbitalEle
     // 单步：基于简化模型积分一次
     auto step_once = [&](const CompactOrbitalElements& e, double h) {
         double a = e.a, ec = e.e, inc = e.i;
-        double n = std::sqrt(MU / std::pow(a, 3));
-        double factor = (3.0 * J2 * MU * RE * RE) / (2.0 * std::pow(a * (1.0 - ec*ec), 2));
-        double common = factor / (n * a * a);
+        double n = std::sqrt(MU / (a * a * a));
+        double p = a * (1.0 - ec * ec);
+        double factor = (3.0 / 2.0) * J2 * n * (RE / p) * (RE / p);
+        double cos_i = std::cos(inc);
+        double cos_i_sq = cos_i * cos_i;
+        double sqrt_one_minus_e2 = std::sqrt(std::max(0.0, 1.0 - ec * ec));
+        double dO = -factor * cos_i;
+        double dw = 0.5 * factor * (5.0 * cos_i_sq - 1.0);
+        double dM = n + 0.5 * factor * sqrt_one_minus_e2 * (3.0 * cos_i_sq - 1.0);
         CompactOrbitalElements r = e;
-        r.O = normalizeAngle(r.O + (-common * std::cos(inc)) * h);
-        r.w = normalizeAngle(r.w + (common * (2.0 - 2.5 * std::pow(std::sin(inc), 2))) * h);
-        double sin_i = std::sin(inc);
-        double sin_i_sq = sin_i * sin_i;
-        double sqrt_one_minus_e2 = std::sqrt(1.0 - ec*ec);
-        double j2_term = factor * sqrt_one_minus_e2 * (1.5 * sin_i_sq - 0.5) / (n * a * a);
-        r.M = normalizeAngle(r.M + (n - j2_term) * h);
+        r.O = normalizeAngle(r.O + dO * h);
+        r.w = normalizeAngle(r.w + dw * h);
+        r.M = normalizeAngle(r.M + dM * h);
         return r;
     };
     // 单步结果

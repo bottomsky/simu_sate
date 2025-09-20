@@ -11,6 +11,7 @@
  */
 
 #include "j2_orbit_propagator.h"
+#include <algorithm>
 
 /**
  * @brief J2OrbitPropagator 类的构造函数。
@@ -128,7 +129,7 @@ Eigen::VectorXd J2OrbitPropagator::computeDerivatives(const OrbitalElements& ele
     double a = elements.a;
     double e = elements.e;
     double i = elements.i;
-    
+
     // 在J2摄动的长期平均模型中，半长轴(a)、偏心率(e)和倾角(i)不发生长期变化。
     // 因此它们的导数被设为0。
     Eigen::VectorXd derivatives = Eigen::VectorXd::Zero(6);
@@ -144,18 +145,19 @@ Eigen::VectorXd J2OrbitPropagator::computeDerivatives(const OrbitalElements& ele
     double factor = (3.0 / 2.0) * J2 * mean_motion * (RE / p) * (RE / p);
 
     double cos_i = std::cos(i);
-    double sin_i_sq = std::sin(i) * std::sin(i);
-    
+    double cos_i_sq = cos_i * cos_i;
+    double sin_i_sq = 1.0 - cos_i_sq;
+
     // 计算J2摄动导数：
     // dO/dt (升交点赤经)
     derivatives[3] = -factor * cos_i;
-    
+
     // dw/dt (近地点幅角)
-    derivatives[4] = factor * (2.5 * sin_i_sq - 2.0);
-    
+    derivatives[4] = 0.5 * factor * (5.0 * cos_i_sq - 1.0);
+
     // dM/dt (平近点角)
-    derivatives[5] = mean_motion - factor * std::sqrt(1.0 - e * e) * (1.5 * sin_i_sq - 0.5);
-    
+    derivatives[5] = mean_motion + 0.5 * factor * std::sqrt(1.0 - e * e) * (3.0 * cos_i_sq - 1.0);
+
     return derivatives;
 }
 
@@ -390,49 +392,79 @@ OrbitalElements J2OrbitPropagator::stateToElements(const StateVector& state, dou
     
     // 3. 计算偏心率矢量 e。
     Eigen::Vector3d e_vec = ((v*v - MU/r) * r_vec - (r_vec.dot(v_vec)) * v_vec) / MU;
-    elements.e = e_vec.norm();
+    double ecc = e_vec.norm();
+    elements.e = ecc;
     
     // 4. 计算轨道能量 Epsilon，并从中得到半长轴 a。
     double energy = v*v/2.0 - MU/r;
     elements.a = -MU / (2.0 * energy);
     
     // 5. 计算倾角 i。
-    elements.i = std::acos(h_vec.z() / h);
-    
-    // 6. 计算升交点赤经 O。
-    elements.O = std::acos(n_vec.x() / n);
-    if (n_vec.y() < 0) {
-        elements.O = 2.0 * M_PI - elements.O;
-    }
-    
-    // 7. 计算近地点幅角 w。
-    elements.w = std::acos(n_vec.dot(e_vec) / (n * elements.e));
-    if (e_vec.z() < 0) {
-        elements.w = 2.0 * M_PI - elements.w;
-    }
-    
-    // 8. 计算真近点角 nu。
-    double nu = std::acos(e_vec.dot(r_vec) / (elements.e * r));
-    if (r_vec.dot(v_vec) < 0) {
-        nu = 2.0 * M_PI - nu;
-    }
-    
-    // 9. 从真近点角 nu 计算偏近点角 E 和平近点角 M。
-    // 使用更稳定的公式并处理象限问题
-    double E;
-    if (std::abs(elements.e) < EPSILON) {
-        // 圆轨道情况：E = nu = M
-        E = nu;
-        elements.M = nu;  // 对于圆轨道，平近点角等于真近点角
+    constexpr double SMALL_ECC = 1e-8;
+    constexpr double SMALL_NORM = 1e-12;
+
+    double cos_i = std::clamp(h_vec.z() / h, -1.0, 1.0);
+    elements.i = std::acos(cos_i);
+
+    bool equatorial = n < SMALL_NORM;
+    if (!equatorial) {
+        double cos_O = std::clamp(n_vec.x() / n, -1.0, 1.0);
+        elements.O = std::acos(cos_O);
+        if (n_vec.y() < 0) {
+            elements.O = 2.0 * M_PI - elements.O;
+        }
     } else {
-        // 椭圆轨道情况
-        double sin_E = std::sqrt(1.0 - elements.e * elements.e) * std::sin(nu) / (1.0 + elements.e * std::cos(nu));
-        double cos_E = (elements.e + std::cos(nu)) / (1.0 + elements.e * std::cos(nu));
-        E = std::atan2(sin_E, cos_E);
-        E = normalizeAngle(E);
-        // 10. 从偏近点角 E 计算平近点角 M。
-        elements.M = E - elements.e * std::sin(E);
+        elements.O = 0.0;
     }
+
+    double w = 0.0;
+    double nu = 0.0;
+
+    if (ecc > SMALL_ECC) {
+        if (!equatorial) {
+            double cos_w = std::clamp(n_vec.dot(e_vec) / (n * ecc), -1.0, 1.0);
+            w = std::acos(cos_w);
+            if (e_vec.z() < 0) {
+                w = 2.0 * M_PI - w;
+            }
+        } else {
+            w = normalizeAngle(std::atan2(e_vec.y(), e_vec.x()));
+        }
+
+        double cos_nu = std::clamp(e_vec.dot(r_vec) / (ecc * r), -1.0, 1.0);
+        nu = std::acos(cos_nu);
+        if (r_vec.dot(v_vec) < 0) {
+            nu = 2.0 * M_PI - nu;
+        }
+    } else {
+        elements.e = 0.0;
+        Eigen::Vector3d h_hat = h_vec.normalized();
+        Eigen::Vector3d node_hat;
+        if (!equatorial) {
+            node_hat = n_vec / n;
+        } else {
+            node_hat = Eigen::Vector3d::UnitX();
+        }
+        Eigen::Vector3d perigee_hat = h_hat.cross(node_hat);
+        nu = std::atan2(r_vec.dot(perigee_hat), r_vec.dot(node_hat));
+        nu = normalizeAngle(nu);
+    }
+
+    elements.w = normalizeAngle(w);
+
+    double mean_anomaly;
+    if (elements.e > SMALL_ECC) {
+        double sqrt_one_minus_e2 = std::sqrt(std::max(0.0, 1.0 - elements.e * elements.e));
+        double sin_E = sqrt_one_minus_e2 * std::sin(nu) / (1.0 + elements.e * std::cos(nu));
+        double cos_E = (elements.e + std::cos(nu)) / (1.0 + elements.e * std::cos(nu));
+        double E = std::atan2(sin_E, cos_E);
+        E = normalizeAngle(E);
+        mean_anomaly = E - elements.e * std::sin(E);
+    } else {
+        mean_anomaly = nu;
+    }
+
+    elements.M = normalizeAngle(mean_anomaly);
     
     // 归一化所有角度。
     elements.i = normalizeAngle(elements.i);

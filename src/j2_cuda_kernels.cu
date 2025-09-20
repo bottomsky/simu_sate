@@ -161,17 +161,13 @@ __global__ void j2_propagate_kernel(double* a, double* e, double* i,
         
         // 预计算三角函数值。
         double cos_i = cos(i_val);
-        double sin_i = sin(i_val);
         double cos2_i = cos_i * cos_i;
-        double sin2_i = sin_i * sin_i;
-        
+
         // 计算升交点赤经、近地点幅角和平近点角的导数，并乘以时间步长得到变化量。
         // dO/dt = - (3/2) * n * J2 * (Re/p)^2 * cos(i)
         double dO = -factor * cos_i * dt;
-        // dw/dt = (3/2) * n * J2 * (Re/p)^2 * (2.5 * sin^2(i) - 2.0)  // Match CPU implementation
-        double dw = factor * (2.5 * sin2_i - 2.0) * dt;
-        // dM/dt 与CPU实现严格一致：n - factor * sqrt(1-e^2) * (1.5 * sin^2(i) - 0.5)
-        double dM = (n - factor * sqrt(one_minus_e2) * (1.5 * sin2_i - 0.5)) * dt;
+        double dw = 0.5 * factor * (5.0 * cos2_i - 1.0) * dt;
+        double dM = (n + 0.5 * factor * sqrt(one_minus_e2) * (3.0 * cos2_i - 1.0)) * dt;
         
         // 更新轨道要素并将角度归一化到 [0, 2*PI) 范围。
         O[idx] = normalize_angle_cuda(O_val + dO);
@@ -213,12 +209,22 @@ __global__ void compute_positions_kernel(double* a, double* e, double* i,
         
         // 求解开普勒方程 M = E - e*sin(E) 来计算偏近点角(E)。
         // 这里使用牛顿法进行一次迭代，对于小偏心率轨道足够精确。
-        double E = M_val;  // 初始猜测
-        E = E - (E - e_val * sin(E) - M_val) / (1.0 - e_val * cos(E));
-        
-        // 计算真近点角(nu)。
-        double tan_nu_2 = sqrt((1.0 + e_val) / (1.0 - e_val)) * tan(E / 2.0);
-        double nu = 2.0 * atan(tan_nu_2);
+        double E = M_val;
+        for (int iter = 0; iter < 12; ++iter) {
+            double f = E - e_val * sin(E) - M_val;
+            double f_prime = 1.0 - e_val * cos(E);
+            double delta = -f / f_prime;
+            E += delta;
+            if (fabs(delta) < 1e-12) {
+                break;
+            }
+        }
+        E = normalize_angle_cuda(E);
+
+        double sin_E = sin(E);
+        double cos_E = cos(E);
+        double sqrt_one_minus_e2 = sqrt(fmax(0.0, 1.0 - e_val * e_val));
+        double nu = atan2(sqrt_one_minus_e2 * sin_E, cos_E - e_val);
         
         // 计算卫星到地心的距离(r)。
         double r = a_val * (1.0 - e_val * cos(E));
