@@ -1,0 +1,47 @@
+# Build artifacts
+build/
+Release/
+Debug/
+bin/
+obj/
+
+# Object and debug symbols
+*.o
+*.obj
+*.pdb
+*.ipch
+*.opendb
+
+# Dynamic and static libraries
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+*.exp
+
+# Python caches
+__pycache__/
+.pytest_cache/
+
+# Test outputs
+tests/data/
+tests/**/artifacts/
+tests/**/reports/
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/
+.cache/
+
+# Editors/IDEs
+.vscode/
+.idea/
+.vs/
+
+# Example artifacts
+example/**/bin/
+example/**/obj/
+example/**/TestResults/
+example/**/*.dll
