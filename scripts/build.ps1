@@ -45,7 +45,13 @@ param(
   [switch]$CleanCache,
   [string]$Config = 'Release',
   [int]$Parallel = [Environment]::ProcessorCount,
-  [switch]$Reconfigure
+  [switch]$Reconfigure,
+  [string]$Generator = '',
+  [string]$Toolchain = '',
+  [switch]$EnableCuda,
+  [switch]$DisableTests,
+  [switch]$DisableExamples,
+  [switch]$Visualization
 )
 
 $ErrorActionPreference = 'Stop'
@@ -112,7 +118,9 @@ function Configure-Project {
   param(
     [Parameter(Mandatory=$true)][string]$SourceDir,
     [Parameter(Mandatory=$true)][string]$BuildDir,
-    [switch]$Reconfigure
+    [switch]$Reconfigure,
+    [string]$Generator = '',
+    [string[]]$ExtraArgs = @()
   )
 
   if ($Reconfigure) {
@@ -123,14 +131,13 @@ function Configure-Project {
   }
 
   Write-Section "Configuring with CMake"
-  $configureCmd = @(
-    'cmake',
-    '-S', '"{0}"' -f $SourceDir,
-    '-B', '"{0}"' -f $BuildDir
-  ) -join ' '
+  $args = @('-S', $SourceDir, '-B', $BuildDir)
+  if ($Generator) { $args = @('-G', $Generator) + $args }
+  if ($ExtraArgs -and $ExtraArgs.Count -gt 0) { $args += $ExtraArgs }
 
-  Write-Host "> $configureCmd"
-  & cmake -S $SourceDir -B $BuildDir
+  $configureCmd = @('cmake') + $args
+  Write-Host "> $($configureCmd -join ' ')"
+  & cmake @args
 }
 
 function Build-Project {
@@ -206,6 +213,12 @@ Write-Host ("BuildDir: {0}" -f $BuildDir)
 Write-Host ("BinDir  : {0}" -f $BinDir)
 Write-Host ("Config  : {0}" -f $Config)
 Write-Host ("Parallel: {0}" -f $Parallel)
+Write-Host ("Generator: {0}" -f $Generator)
+Write-Host ("Toolchain: {0}" -f $Toolchain)
+Write-Host ("EnableCuda: {0}" -f $EnableCuda)
+Write-Host ("DisableTests: {0}" -f $DisableTests)
+Write-Host ("DisableExamples: {0}" -f $DisableExamples)
+Write-Host ("Visualization: {0}" -f $Visualization)
 
 Ensure-Directory -Path $BuildDir
 Ensure-Directory -Path $BinDir
@@ -214,7 +227,15 @@ if ($Clean -or $CleanCache) {
   Clean-BuildCache -BuildDir $BuildDir
 }
 
-Configure-Project -SourceDir $RootDir -BuildDir $BuildDir -Reconfigure:$Reconfigure
+Configure-Project -SourceDir $RootDir -BuildDir $BuildDir -Reconfigure:$Reconfigure -Generator $Generator -ExtraArgs @(
+  "-DCMAKE_BUILD_TYPE=$Config",
+  (if ($DisableTests) { "-DBUILD_TESTS=OFF" } else { "-DBUILD_TESTS=ON" }),
+  (if ($DisableExamples) { "-DBUILD_EXAMPLES=OFF" } else { "-DBUILD_EXAMPLES=ON" })
+  ) + @(
+    (if ($Visualization) { "-DBUILD_VISUALIZATION=ON" }),
+    (if ($EnableCuda) { "-DENABLE_CUDA=ON" }),
+    (if ($Toolchain) { "-DCMAKE_TOOLCHAIN_FILE=$Toolchain" })
+  )
 Build-Project -BuildDir $BuildDir -Config $Config -Parallel $Parallel
 Copy-ArtifactsToBin -BuildDir $BuildDir -BinDir $BinDir
 

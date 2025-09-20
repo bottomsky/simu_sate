@@ -269,6 +269,35 @@ if [[ "$BUILD_VISUALIZATION" == "ON" ]] && [[ -f "$BUILD_TYPE/orbit_visualizatio
     print_info "可视化演示: orbit_visualization_demo"
 fi
 
+# 归集构建产物到统一目录 build/Release（兼容单/多配置生成器）
+ART_DIR="$PROJECT_ROOT/build/Release"
+mkdir -p "$ART_DIR"
+SRC_DIR="."
+if [[ -d "$BUILD_TYPE" ]]; then SRC_DIR="$BUILD_TYPE"; fi
+
+# 拷贝共享库和静态库
+shopt -s nullglob
+for f in "$SRC_DIR"/*.so "$SRC_DIR"/*.a; do
+    [ -e "$f" ] || continue
+    cp -f "$f" "$ART_DIR/"
+    print_info "产物: $(basename "$f") -> $ART_DIR/"
+done
+
+# 拷贝可执行文件（示例/测试）
+for exe in "$SRC_DIR"/*_tests "$SRC_DIR"/j2_example "$SRC_DIR"/orbit_visualization_demo; do
+    [ -e "$exe" ] || continue
+    cp -f "$exe" "$ART_DIR/" 2>/dev/null || true
+    print_info "可执行: $(basename "$exe") -> $ART_DIR/"
+done
+shopt -u nullglob
+
+# 兼容示例：如存在 example 目录，将 libj2_orbit_propagator.so 复制过去
+if [[ -d "$PROJECT_ROOT/example" ]] && [[ -f "$ART_DIR/libj2_orbit_propagator.so" ]]; then
+    cp -f "$ART_DIR/libj2_orbit_propagator.so" "$PROJECT_ROOT/example/" || true
+fi
+
+print_success "构建产物已归集至: $ART_DIR"
+
 print_success "========================================"
 
 # 可选：运行测试
