@@ -7,8 +7,8 @@
   It supports cleaning the build cache (removing generated files in the build directory
   while preserving the build/CMakeLists.txt file as required by the project layout).
   The primary build artifacts reside under build/<Config> (e.g., build/Debug, build/Release).
-  For convenience, the script also collects Windows runtime artifacts (DLL/EXE)
-  into the repository-level bin directory.
+  For convenience, the script also collects build artifacts (DLL/EXE/LIB/PDB/EXP and, when using -AlsoLinux, SO/A)
+  into the unified directory build/Release for packaging and runtime convenience.
 #>
 
 [CmdletBinding()]
