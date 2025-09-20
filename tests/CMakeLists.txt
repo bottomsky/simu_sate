@@ -60,6 +60,6 @@ if(BUILD_TESTING)
 endif()
 
 # 添加测试子目录
-add_subdirectory(unit)
+add_subdirectory(unit/cpp)
 add_subdirectory(integration)
 add_subdirectory(performance)
