@@ -125,6 +125,20 @@ set_target_properties(j2_orbit_propagator_shared PROPERTIES
 # 为共享库定义导出宏
 target_compile_definitions(j2_orbit_propagator_shared PRIVATE J2_BUILD_DLL)
 
+# Propagate CUDA availability to the core libraries so runtime checks work correctly.
+if(CMAKE_CUDA_COMPILER)
+    set(HAVE_CUDA_TOOLKIT_FLAG 1)
+else()
+    set(HAVE_CUDA_TOOLKIT_FLAG 0)
+endif()
+
+foreach(target j2_orbit_propagator_static j2_orbit_propagator_shared)
+    target_compile_definitions(${target} PUBLIC HAVE_CUDA_TOOLKIT=${HAVE_CUDA_TOOLKIT_FLAG})
+    if(HAVE_CUDA_TOOLKIT_FLAG AND TARGET CUDA::cudart)
+        target_link_libraries(${target} PUBLIC CUDA::cudart)
+    endif()
+endforeach()
+
 # 创建别名目标，供可视化模块使用
 add_library(j2_orbit_propagator ALIAS j2_orbit_propagator_static)
 
