@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "j2_orbit_propagator.h"
+#include "constellation_propagator.h"
 #include "math_defs.h"
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -154,5 +155,104 @@ TEST(SingleSatellitePropagation, PropagateAndRecord) {
         o << std::setw(4) << simulation_results << std::endl;
         
         std::cout << "Simulation completed for " << config.step_name << ", results saved to: " << filename << std::endl;
+    }
+}
+
+namespace {
+
+double angularDifference(double lhs, double rhs) {
+    return normalizeAnglePiToPi(lhs - rhs);
+}
+
+std::vector<CompactOrbitalElements> createTestConstellation() {
+    return {
+        {7000000.0, 0.001, 0.9, 0.5, 0.2, 0.0},
+        {15000000.0, 0.02, 0.5, 1.0, 0.8, 1.2},
+        {26560000.0, 0.1, 1.2, 2.0, 0.4, 2.4}
+    };
+}
+
+std::vector<CompactOrbitalElements> propagateWithMode(ConstellationPropagator::ComputeMode mode,
+                                                      double step_size,
+                                                      double duration,
+                                                      const std::vector<CompactOrbitalElements>& initial) {
+    ConstellationPropagator propagator(0.0);
+    propagator.setComputeMode(mode);
+    propagator.setStepSize(step_size);
+    propagator.addSatellites(initial);
+    propagator.propagateConstellation(duration);
+
+    std::vector<CompactOrbitalElements> result;
+    result.reserve(initial.size());
+    for (size_t idx = 0; idx < initial.size(); ++idx) {
+        result.push_back(propagator.getSatelliteElements(idx));
+    }
+    return result;
+}
+
+void expectElementsClose(const CompactOrbitalElements& actual,
+                         const CompactOrbitalElements& reference,
+                         double linear_tol,
+                         double angular_tol,
+                         double mean_anomaly_tol) {
+    EXPECT_NEAR(actual.a, reference.a, linear_tol);
+    EXPECT_NEAR(actual.e, reference.e, linear_tol);
+    EXPECT_NEAR(actual.i, reference.i, angular_tol);
+    EXPECT_NEAR(angularDifference(actual.O, reference.O), 0.0, angular_tol);
+    EXPECT_NEAR(angularDifference(actual.w, reference.w), 0.0, angular_tol);
+    EXPECT_NEAR(angularDifference(actual.M, reference.M), 0.0, mean_anomaly_tol);
+}
+
+}  // namespace
+
+TEST(ConstellationPropagationConsistency, ModesAgreeAcrossStepsAndDurations) {
+    const auto initial_elements = createTestConstellation();
+    const std::vector<std::pair<double, double>> scenarios = {
+        {1.0, 600.0},
+        {10.0, 3600.0},
+        {60.0, 86400.0}
+    };
+
+    const double linear_tol = 1e-6;
+    const double angular_tol = 1e-8;
+    const double mean_anomaly_tol = 1e-8;
+
+    const bool cuda_available = ConstellationPropagator::isCudaAvailable();
+
+    for (const auto& scenario : scenarios) {
+        const double step_size = scenario.first;
+        const double duration = scenario.second;
+
+        SCOPED_TRACE(testing::Message() << "step=" << step_size << ", duration=" << duration);
+
+        const auto scalar_results = propagateWithMode(ConstellationPropagator::CPU_SCALAR,
+                                                      step_size,
+                                                      duration,
+                                                      initial_elements);
+        const auto simd_results = propagateWithMode(ConstellationPropagator::CPU_SIMD,
+                                                    step_size,
+                                                    duration,
+                                                    initial_elements);
+
+        std::vector<CompactOrbitalElements> cuda_results;
+        if (cuda_available) {
+            cuda_results = propagateWithMode(ConstellationPropagator::GPU_CUDA,
+                                             step_size,
+                                             duration,
+                                             initial_elements);
+        } else {
+            cuda_results = scalar_results;
+        }
+
+        ASSERT_EQ(scalar_results.size(), simd_results.size());
+        ASSERT_EQ(scalar_results.size(), cuda_results.size());
+
+        for (size_t idx = 0; idx < scalar_results.size(); ++idx) {
+            expectElementsClose(simd_results[idx], scalar_results[idx],
+                                linear_tol, angular_tol, mean_anomaly_tol);
+            expectElementsClose(cuda_results[idx], scalar_results[idx],
+                                linear_tol, angular_tol, mean_anomaly_tol);
+        }
+
     }
 }

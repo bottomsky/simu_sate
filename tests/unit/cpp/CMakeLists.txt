@@ -17,17 +17,12 @@ endif()
 file(GLOB UNIT_TEST_SOURCES "*.cpp")
 
 if(UNIT_TEST_SOURCES)
-  # 添加 J2OrbitPropagator 源文件（从 tests/unit/cpp 回到项目 src 目录需要上溯三级）
-  set(J2_PROPAGATOR_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../src/j2_orbit_propagator.cpp
+  add_executable(unit_tests ${UNIT_TEST_SOURCES})
+  target_include_directories(unit_tests PRIVATE ${JSON_HEADER_DIR})
+  target_link_libraries(unit_tests PRIVATE
+    j2_orbit_propagator_static
+    GTest::gtest
+    GTest::gtest_main
   )
-  
-  add_executable(unit_tests ${UNIT_TEST_SOURCES} ${J2_PROPAGATOR_SOURCES})
-  target_include_directories(unit_tests PRIVATE 
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../include 
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../lib/eigen
-    ${JSON_HEADER_DIR}
-  )
-  target_link_libraries(unit_tests PRIVATE GTest::gtest GTest::gtest_main)
   add_test(NAME unit_tests COMMAND unit_tests)
 endif()
