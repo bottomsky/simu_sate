@@ -243,9 +243,12 @@ TEST_F(ParameterSweepTest, AnalyticalJ2SecularRatesValidation) {
         double n = std::sqrt(MU / (c.a_m*c.a_m*c.a_m));
         double p = c.a_m * (1.0 - c.e*c.e);
         double factor = 1.5 * n * J2 * std::pow(RE / p, 2);
-        double dOdt = -factor * std::cos(c.i_rad);
-        double dwdt =  factor * (2.5 * std::sin(c.i_rad)*std::sin(c.i_rad) - 2.0);
-        double dMdt =  n - factor * std::sqrt(1.0 - c.e*c.e) * (1.5 * std::sin(c.i_rad)*std::sin(c.i_rad) - 0.5);
+        double cos_i = std::cos(c.i_rad);
+        double cos_i_sq = cos_i * cos_i;
+        double sqrt_one_minus_e2 = std::sqrt(1.0 - c.e*c.e);
+        double dOdt = -factor * cos_i;
+        double dwdt = 0.5 * factor * (5.0 * cos_i_sq - 1.0);
+        double dMdt = n + 0.5 * factor * sqrt_one_minus_e2 * (3.0 * cos_i_sq - 1.0);
 
         // 解析解（只考虑世俗项）
         double O_pred = c.Omega0 + dOdt * c.T;
@@ -304,9 +307,12 @@ TEST_F(ParameterSweepTest, LongTermStabilityValidation) {
         double n = std::sqrt(MU / (c.a_m*c.a_m*c.a_m));
         double p = c.a_m * (1.0 - c.e*c.e);
         double factor = 1.5 * n * J2 * std::pow(RE / p, 2);
-        double dOdt = -factor * std::cos(c.i_rad);
-        double dwdt =  factor * (2.5 * std::sin(c.i_rad)*std::sin(c.i_rad) - 2.0);
-        double dMdt =  n - factor * std::sqrt(1.0 - c.e*c.e) * (1.5 * std::sin(c.i_rad)*std::sin(c.i_rad) - 0.5);
+        double cos_i = std::cos(c.i_rad);
+        double cos_i_sq = cos_i * cos_i;
+        double sqrt_one_minus_e2 = std::sqrt(1.0 - c.e*c.e);
+        double dOdt = -factor * cos_i;
+        double dwdt = 0.5 * factor * (5.0 * cos_i_sq - 1.0);
+        double dMdt = n + 0.5 * factor * sqrt_one_minus_e2 * (3.0 * cos_i_sq - 1.0);
 
         double O_pred = c.O0 + dOdt * T;
         double w_pred = c.w0 + dwdt * T;
