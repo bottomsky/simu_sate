@@ -1,6 +1,7 @@
 #include "constellation_propagator.h"
 #include "j2_orbit_propagator.h"  // 用于CUDA路径中的状态->要素转换
 #include <algorithm>
+#include <array>
 #include <cstring>
 #if defined(__AVX2__) || defined(__AVX__)
 #include <immintrin.h>
@@ -8,6 +9,40 @@
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
 #include <cuda_runtime_api.h>
 #endif
+
+namespace {
+
+std::array<double, 3> computeJ2SecularRates(double semi_major_axis,
+                                            double eccentricity,
+                                            double inclination) {
+    std::array<double, 3> rates{0.0, 0.0, 0.0};
+
+    if (semi_major_axis <= 0.0) {
+        return rates;
+    }
+
+    double one_minus_e2 = 1.0 - eccentricity * eccentricity;
+    if (std::abs(one_minus_e2) < EPSILON) {
+        return rates;
+    }
+
+    double mean_motion = std::sqrt(MU / (semi_major_axis * semi_major_axis * semi_major_axis));
+    double p = semi_major_axis * one_minus_e2;
+    double re_over_p = RE / p;
+    double re_over_p_sq = re_over_p * re_over_p;
+    double factor = 1.5 * J2 * mean_motion * re_over_p_sq;
+    double cos_i = std::cos(inclination);
+    double cos_i_sq = cos_i * cos_i;
+
+    rates[0] = -factor * cos_i;  // d(O)/dt
+    rates[1] = 0.5 * factor * (5.0 * cos_i_sq - 1.0);  // d(w)/dt
+    rates[2] = mean_motion +
+               0.5 * factor * std::sqrt(one_minus_e2) * (3.0 * cos_i_sq - 1.0);  // d(M)/dt
+
+    return rates;
+}
+
+}  // namespace
 
 ConstellationPropagator::ConstellationPropagator(double epoch_time)
     : epoch_time_(epoch_time), current_time_(epoch_time), step_size_(60.0), 
@@ -145,27 +180,10 @@ void ConstellationPropagator::propagateScalar(double dt) {
         // 提取单个卫星的轨道要素
         CompactOrbitalElements elem = getSatelliteElements(i);
         
-        // 使用RK4积分器替代简单欧拉积分，提高精度
         auto computeDerivatives = [&](const CompactOrbitalElements& e) -> std::array<double, 3> {
-            double a = e.a, ec = e.e, inc = e.i;
-            if (std::abs(1.0 - ec * ec) < EPSILON) {
-                return {0.0, 0.0, 0.0}; // 避免奇异性
-            }
-
-            double n = std::sqrt(MU / (a * a * a));
-            double p = a * (1.0 - ec * ec);
-            double factor = (3.0 / 2.0) * J2 * n * (RE / p) * (RE / p);
-            double cos_i = std::cos(inc);
-            double cos_i_sq = cos_i * cos_i;
-            double sin_i_sq = 1.0 - cos_i_sq;
-
-            double dO_dt = -factor * cos_i;
-            double dw_dt = 0.5 * factor * (5.0 * cos_i_sq - 1.0);
-            double dM_dt = n + 0.5 * factor * std::sqrt(1.0 - ec * ec) * (3.0 * cos_i_sq - 1.0);
-
-            return {dO_dt, dw_dt, dM_dt};
+            return computeJ2SecularRates(e.a, e.e, e.i);
         };
-        
+
         // RK4积分：k1在起点
         auto k1 = computeDerivatives(elem);
         
@@ -303,24 +321,8 @@ void ConstellationPropagator::propagateSIMD(double dt) {
     for (size_t i = simd_count; i < n; ++i) {
         CompactOrbitalElements elem = getSatelliteElements(i);
         
-        // 与propagateScalar相同的RK4实现
         auto computeDerivatives = [&](const CompactOrbitalElements& e) -> std::array<double, 3> {
-            double a = e.a, ec = e.e, inc = e.i;
-            if (std::abs(1.0 - ec * ec) < EPSILON) {
-                return {0.0, 0.0, 0.0}; // 避免奇异性
-            }
-            
-            double mean_motion = std::sqrt(MU / (a * a * a));
-            double p = a * (1.0 - ec * ec);
-            double factor = (3.0 / 2.0) * J2 * mean_motion * (RE / p) * (RE / p);
-            double cos_i = std::cos(inc);
-            double sin_i_sq = std::sin(inc) * std::sin(inc);
-            
-            double dO_dt = -factor * cos_i;
-            double dw_dt = factor * (2.5 * sin_i_sq - 2.0);
-            double dM_dt = mean_motion - factor * std::sqrt(1.0 - ec * ec) * (1.5 * sin_i_sq - 0.5);
-            
-            return {dO_dt, dw_dt, dM_dt};
+            return computeJ2SecularRates(e.a, e.e, e.i);
         };
         
         // RK4积分：k1在起点
