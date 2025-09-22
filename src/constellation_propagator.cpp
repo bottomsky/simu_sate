@@ -66,6 +66,8 @@ ConstellationPropagator::~ConstellationPropagator() {
 }
 
 void ConstellationPropagator::addSatellites(const std::vector<CompactOrbitalElements>& satellites) {
+    ensureHostElementsUpToDate();
+
     size_t old_size = elements_.size();
     size_t new_size = old_size + satellites.size();
     
@@ -81,9 +83,13 @@ void ConstellationPropagator::addSatellites(const std::vector<CompactOrbitalElem
         elements_.w[idx] = satellites[i].w;
         elements_.M[idx] = satellites[i].M;
     }
+
+    markDeviceElementsDirty();
 }
 
 void ConstellationPropagator::addSatellite(const CompactOrbitalElements& satellite) {
+    ensureHostElementsUpToDate();
+
     size_t idx = elements_.size();
     elements_.resize(idx + 1);
     
@@ -93,6 +99,8 @@ void ConstellationPropagator::addSatellite(const CompactOrbitalElements& satelli
     elements_.O[idx] = satellite.O;
     elements_.w[idx] = satellite.w;
     elements_.M[idx] = satellite.M;
+
+    markDeviceElementsDirty();
 }
 
 void ConstellationPropagator::propagateConstellation(double target_time) {
@@ -132,6 +140,8 @@ void ConstellationPropagator::propagateConstellation(double target_time) {
         double dt = std::min(remaining_time, step_size_);
         dt = std::max(min_step_size_, std::min(dt, max_step_size_));
         while (remaining_time > EPSILON) {
+            ensureHostElementsUpToDate();
+
             if (dt > remaining_time) dt = remaining_time;
             // 以采样的方式评估误差（若星座很大，抽样评估）
             double max_err = 0.0;
@@ -174,6 +184,8 @@ void ConstellationPropagator::propagateConstellation(double target_time) {
 }
 
 void ConstellationPropagator::propagateScalar(double dt) {
+    ensureHostElementsUpToDate();
+
     size_t n = elements_.size();
     
     for (size_t i = 0; i < n; ++i) {
@@ -213,9 +225,13 @@ void ConstellationPropagator::propagateScalar(double dt) {
         elements_.w[i] = normalizeAngle(elem.w + (k1[1] + 2.0*k2[1] + 2.0*k3[1] + k4[1]) * dt / 6.0);
         elements_.M[i] = normalizeAngle(elem.M + (k1[2] + 2.0*k2[2] + 2.0*k3[2] + k4[2]) * dt / 6.0);
     }
+
+    markDeviceElementsDirty();
 }
 
 void ConstellationPropagator::propagateSIMD(double dt) {
+    ensureHostElementsUpToDate();
+
     size_t n = elements_.size();
     size_t simd_count = (n / 4) * 4;  // AVX2处理4个double
     
@@ -359,6 +375,8 @@ void ConstellationPropagator::propagateSIMD(double dt) {
     normalizeAnglesSIMD(elements_.O);
     normalizeAnglesSIMD(elements_.w);
     normalizeAnglesSIMD(elements_.M);
+
+    markDeviceElementsDirty();
 }
 
 void ConstellationPropagator::normalizeAnglesSIMD(std::vector<double, Eigen::aligned_allocator<double>>& angles) {
@@ -389,10 +407,12 @@ void ConstellationPropagator::normalizeAnglesSIMD(std::vector<double, Eigen::ali
 }
 
 CompactOrbitalElements ConstellationPropagator::getSatelliteElements(size_t satellite_id) const {
+    ensureHostElementsUpToDate();
+
     if (satellite_id >= elements_.size()) {
         throw std::out_of_range("Satellite ID out of range");
     }
-    
+
     CompactOrbitalElements elem;
     elem.a = elements_.a[satellite_id];
     elem.e = elements_.e[satellite_id];
@@ -473,6 +493,8 @@ CompactOrbitalElements ConstellationPropagator::applyImpulseScalar(const Compact
 }
 
 void ConstellationPropagator::applyImpulseToConstellation(const std::vector<Eigen::Vector3d>& delta_vs, double t) {
+    ensureHostElementsUpToDate();
+
     size_t n = elements_.size();
     if (delta_vs.size() != n) {
         throw std::invalid_argument("delta_vs size must match satellite count");
@@ -552,6 +574,8 @@ void ConstellationPropagator::applyImpulseToConstellation(const std::vector<Eige
 void ConstellationPropagator::applyImpulseToSatellites(const std::vector<size_t>& satellite_ids,
                                                        const std::vector<Eigen::Vector3d>& delta_vs,
                                                        double t) {
+    ensureHostElementsUpToDate();
+
     if (satellite_ids.size() != delta_vs.size()) {
         throw std::invalid_argument("satellite_ids and delta_vs must have same length");
     }
@@ -631,11 +655,15 @@ void ConstellationPropagator::applyImpulseToSatellites(const std::vector<size_t>
             break;
         }
     }
+
+    markDeviceElementsDirty();
 }
 
 void ConstellationPropagator::applyImpulseSubsetSIMD(const std::vector<size_t>& satellite_ids,
                                                      const std::vector<Eigen::Vector3d>& delta_vs,
                                                      double t) {
+    ensureHostElementsUpToDate();
+
     const size_t m = satellite_ids.size();
     
 #if defined(__AVX2__) || defined(__AVX__)
@@ -713,6 +741,8 @@ void ConstellationPropagator::applyImpulseSubsetSIMD(const std::vector<size_t>& 
         elements_.M[idx] = updated.M;
     }
 #endif
+
+    markDeviceElementsDirty();
 }
 
 Eigen::MatrixXd ConstellationPropagator::getAllPositions() const {
@@ -771,29 +801,18 @@ void ConstellationPropagator::propagateCUDA(double dt) {
     size_t n = elements_.size();
     if (n == 0) return;
 
-    // 将当前要素打包为连续缓冲区 [a, e, i, O, w, M]（每段长度为 n）
-    std::vector<double> elems(6 * n);
-    for (size_t idx = 0; idx < n; ++idx) {
-        elems[idx + n * 0] = elements_.a[idx];
-        elems[idx + n * 1] = elements_.e[idx];
-        elems[idx + n * 2] = elements_.i[idx];
-        elems[idx + n * 3] = elements_.O[idx];
-        elems[idx + n * 4] = elements_.w[idx];
-        elems[idx + n * 5] = elements_.M[idx];
-    }
+    initializeCUDA();
 
-    // 使用主机级CUDA接口进行一次J2外推（内部完成H2D/D2H和内核调用）
-    cuda_propagate_j2(elems.data(), n, dt, MU, RE, J2);
+    ensureDeviceElementsUpToDate();
 
-    // 写回结果
-    for (size_t idx = 0; idx < n; ++idx) {
-        elements_.a[idx] = elems[idx + n * 0];
-        elements_.e[idx] = elems[idx + n * 1];
-        elements_.i[idx] = elems[idx + n * 2];
-        elements_.O[idx] = elems[idx + n * 3];
-        elements_.w[idx] = elems[idx + n * 4];
-        elements_.M[idx] = elems[idx + n * 5];
-    }
+    cudaStream_t stream = cuda_stream_ ? cuda_stream_ : 0;
+
+    cuda_propagate_j2_persistent(d_a_, d_e_, d_i_, d_O_, d_w_, d_M_,
+                                 n, dt, MU, RE, J2, stream);
+
+    cudaStreamSynchronize(stream);
+
+    markHostElementsDirty();
 #else
     // 回退到CPU实现
     std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
@@ -804,10 +823,14 @@ void ConstellationPropagator::propagateCUDA(double dt) {
 void ConstellationPropagator::initializeCUDA() {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     size_t n = elements_.size();
-    if (n > 0 && gpu_buffer_size_ < n) {
+    if (n == 0) {
+        return;
+    }
+
+    if (gpu_buffer_size_ < n) {
         // 清理旧缓冲区
         cleanupCUDA();
-        
+
         // 分配新的持久化缓冲区
         size_t size = n * sizeof(double);
         cudaMalloc(&d_a_, size);
@@ -819,11 +842,13 @@ void ConstellationPropagator::initializeCUDA() {
         cudaMalloc(&d_x_, size);
         cudaMalloc(&d_y_, size);
         cudaMalloc(&d_z_, size);
-        
-        // 创建CUDA流用于异步操作
-        cudaStreamCreate(&cuda_stream_);
-        
+
         gpu_buffer_size_ = n;
+        device_elements_dirty_ = true;
+    }
+
+    if (!cuda_stream_) {
+        cudaStreamCreate(&cuda_stream_);
     }
 #endif
 }
@@ -849,7 +874,73 @@ void ConstellationPropagator::cleanupCUDA() {
         d_a_ = d_e_ = d_i_ = d_O_ = d_w_ = d_M_ = nullptr;
         d_x_ = d_y_ = d_z_ = nullptr;
         gpu_buffer_size_ = 0;
+        device_elements_dirty_ = true;
+        host_elements_dirty_ = false;
     }
+#endif
+}
+
+void ConstellationPropagator::ensureDeviceElementsUpToDate() {
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
+    if (!device_elements_dirty_) {
+        return;
+    }
+
+    size_t n = elements_.size();
+    if (n == 0 || gpu_buffer_size_ < n) {
+        return;
+    }
+
+    size_t bytes = n * sizeof(double);
+    cudaStream_t stream = cuda_stream_ ? cuda_stream_ : 0;
+
+    cudaMemcpyAsync(d_a_, elements_.a.data(), bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_e_, elements_.e.data(), bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_i_, elements_.i.data(), bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_O_, elements_.O.data(), bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_w_, elements_.w.data(), bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_M_, elements_.M.data(), bytes, cudaMemcpyHostToDevice, stream);
+
+    device_elements_dirty_ = false;
+#endif
+}
+
+void ConstellationPropagator::ensureHostElementsUpToDate() const {
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
+    if (!host_elements_dirty_) {
+        return;
+    }
+
+    size_t n = elements_.size();
+    if (n == 0) {
+        host_elements_dirty_ = false;
+        return;
+    }
+
+    size_t bytes = n * sizeof(double);
+    cudaStream_t stream = cuda_stream_ ? cuda_stream_ : 0;
+
+    cudaMemcpyAsync(elements_.O.data(), d_O_, bytes, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(elements_.w.data(), d_w_, bytes, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(elements_.M.data(), d_M_, bytes, cudaMemcpyDeviceToHost, stream);
+
+    cudaStreamSynchronize(stream);
+
+    host_elements_dirty_ = false;
+#endif
+}
+
+void ConstellationPropagator::markDeviceElementsDirty() {
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
+    device_elements_dirty_ = true;
+    host_elements_dirty_ = false;
+#endif
+}
+
+void ConstellationPropagator::markHostElementsDirty() {
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
+    host_elements_dirty_ = true;
+    device_elements_dirty_ = false;
 #endif
 }
 
@@ -891,10 +982,14 @@ double ConstellationPropagator::estimateLocalErrorScalar(const CompactOrbitalEle
 }
 
 double ConstellationPropagator::estimateLocalErrorSIMD(size_t idx, double dt) {
+    ensureHostElementsUpToDate();
+
     CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx], elements_.O[idx], elements_.w[idx], elements_.M[idx]};
     return estimateLocalErrorScalar(elem, dt);
 }
 void ConstellationPropagator::applyImpulseSIMD(const std::vector<Eigen::Vector3d>& delta_vs, double t) {
+    ensureHostElementsUpToDate();
+
     size_t n = elements_.size();
     if (delta_vs.size() != n) {
         throw std::invalid_argument("delta_vs size must match satellite count");
@@ -970,4 +1065,6 @@ void ConstellationPropagator::applyImpulseSIMD(const std::vector<Eigen::Vector3d
         elements_.M[idx] = updated.M;
     }
 #endif
+
+    markDeviceElementsDirty();
 }

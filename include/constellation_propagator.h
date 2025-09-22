@@ -103,7 +103,7 @@ public:
     static bool isCudaAvailable() noexcept;
 
 private:
-    SIMDOrbitalElements elements_;      // 星座轨道要素 (SoA格式)
+    mutable SIMDOrbitalElements elements_;      // 星座轨道要素 (SoA格式，可在const上下文中懒加载)
     double epoch_time_;                 // 星座统一历元时间
     double current_time_;               // 当前仿真时间
     double step_size_;                  // 积分步长
@@ -161,6 +161,11 @@ private:
     void initializeCUDA();
     void cleanupCUDA();
 
+    void ensureDeviceElementsUpToDate();
+    void ensureHostElementsUpToDate() const;
+    void markDeviceElementsDirty();
+    void markHostElementsDirty();
+
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     // CUDA相关成员（在启用CUDA工具链时可用）
     // 持久化GPU缓冲区（避免每帧重新分配）
@@ -177,6 +182,9 @@ private:
     cudaStream_t cuda_stream_; // CUDA流
     cublasHandle_t cublas_handle_;
 #endif
+
+    mutable bool device_elements_dirty_ = false; // 主机数据变动后需重新上传
+    mutable bool host_elements_dirty_ = false;   // GPU数据更新后需回传
 };
 
 // CUDA设备函数声明 (总是可见，供链接时调用)
