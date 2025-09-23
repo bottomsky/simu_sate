@@ -208,64 +208,26 @@ void ConstellationPropagator::propagateConstellation(double target_time) {
         return;
     }
     
-    // 分步积分
-    if (!adaptive_step_size_) {
-        size_t steps = 0;
-        double remainder = dt_total;
-        if (step_size_ > EPSILON) {
-            double raw_steps = std::floor(dt_total / step_size_);
-            if (raw_steps > 0.0) {
-                steps = static_cast<size_t>(raw_steps);
-                remainder = dt_total - step_size_ * raw_steps;
-            }
-            if (remainder < EPSILON) {
-                remainder = 0.0;
-            } else if (remainder > step_size_ - EPSILON) {
-                ++steps;
-                remainder = 0.0;
-            }
+    // 分步积分（固定步长）
+    size_t steps = 0;
+    double remainder = dt_total;
+    if (step_size_ > EPSILON) {
+        double raw_steps = std::floor(dt_total / step_size_);
+        if (raw_steps > 0.0) {
+            steps = static_cast<size_t>(raw_steps);
+            remainder = dt_total - step_size_ * raw_steps;
         }
-
-        integrateSteps(steps);
-        integrateRemainder(remainder);
-
-        current_time_ = target_time;
-        return;
-    } else {
-        // 自适应步长：对全体卫星估计局部误差，选取全体可接受的步长
-        double remaining_time = dt_total;
-        double dt = std::min(remaining_time, step_size_);
-        dt = std::max(min_step_size_, std::min(dt, max_step_size_));
-        while (remaining_time > EPSILON) {
-            ensureHostElementsUpToDate();
-
-            if (dt > remaining_time) dt = remaining_time;
-            // 以采样的方式评估误差（若星座很大，抽样评估）
-            double max_err = 0.0;
-            size_t n = elements_.size();
-            size_t sample = std::max<size_t>(1, std::min<size_t>(n, 16));
-            size_t stride = std::max<size_t>(1, n / sample);
-            for (size_t i = 0; i < n; i += stride) {
-                CompactOrbitalElements elem{elements_.a[i], elements_.e[i], elements_.i[i], elements_.O[i], elements_.w[i], elements_.M[i]};
-                double err = estimateLocalErrorScalar(elem, dt);
-                if (err > max_err) max_err = err;
-            }
-            if (max_err <= tolerance_ || dt <= min_step_size_ + 1e-12) {
-                // 接受步长
-                integrateRemainder(dt);
-                remaining_time -= dt;
-                // 放宽步长
-                double safety = 0.9, growth = 1.5;
-                dt = std::min(max_step_size_, std::min(remaining_time, std::max(min_step_size_, dt * safety * std::pow(std::max(max_err, 1e-16), -0.2))));
-                dt = std::min(dt, step_size_ * growth);
-            } else {
-                // 缩小步长重试
-                double safety = 0.9;
-                dt = std::max(min_step_size_, dt * safety * std::pow(std::max(max_err, 1e-16), -0.25));
-            }
+        if (remainder < EPSILON) {
+            remainder = 0.0;
+        } else if (remainder > step_size_ - EPSILON) {
+            ++steps;
+            remainder = 0.0;
         }
     }
-    
+
+    integrateSteps(steps);
+    integrateRemainder(remainder);
+
     current_time_ = target_time;
 }
 
@@ -1001,49 +963,6 @@ void ConstellationPropagator::markHostElementsDirty() {
 #endif
 }
 
-double ConstellationPropagator::estimateLocalErrorScalar(const CompactOrbitalElements& elem, double dt) {
-    // 单步：基于简化模型积分一次
-    auto step_once = [&](const CompactOrbitalElements& e, double h) {
-        double a = e.a, ec = e.e, inc = e.i;
-        double n = std::sqrt(MU / (a * a * a));
-        double p = a * (1.0 - ec * ec);
-        double factor = (3.0 / 2.0) * J2 * n * (RE / p) * (RE / p);
-        double cos_i = std::cos(inc);
-        double cos_i_sq = cos_i * cos_i;
-        double sqrt_one_minus_e2 = std::sqrt(std::max(0.0, 1.0 - ec * ec));
-        double dO = -factor * cos_i;
-        double dw = 0.5 * factor * (5.0 * cos_i_sq - 1.0);
-        double dM = n + 0.5 * factor * sqrt_one_minus_e2 * (3.0 * cos_i_sq - 1.0);
-        CompactOrbitalElements r = e;
-        r.O = normalizeAngle(r.O + dO * h);
-        r.w = normalizeAngle(r.w + dw * h);
-        r.M = normalizeAngle(r.M + dM * h);
-        return r;
-    };
-    // 单步结果
-    CompactOrbitalElements y1 = step_once(elem, dt);
-    // 两个半步
-    CompactOrbitalElements half = step_once(elem, dt * 0.5);
-    CompactOrbitalElements y2 = step_once(half, dt * 0.5);
-    auto angle_diff = [&](double a1, double a2){
-        double d = std::fmod(std::abs(a1 - a2), 2.0 * M_PI);
-        if (d > M_PI) d = 2.0 * M_PI - d;
-        return d;
-    };
-    double eO = angle_diff(y1.O, y2.O);
-    double ew = angle_diff(y1.w, y2.w);
-    double eM = angle_diff(y1.M, y2.M);
-    double ang_norm = (eO + ew + eM) / (3.0 * M_PI);
-    double e_scale = 1.0 + 5.0 * elem.e;
-    return e_scale * ang_norm;
-}
-
-double ConstellationPropagator::estimateLocalErrorSIMD(size_t idx, double dt) {
-    ensureHostElementsUpToDate();
-
-    CompactOrbitalElements elem{elements_.a[idx], elements_.e[idx], elements_.i[idx], elements_.O[idx], elements_.w[idx], elements_.M[idx]};
-    return estimateLocalErrorScalar(elem, dt);
-}
 void ConstellationPropagator::applyImpulseSIMD(const std::vector<Eigen::Vector3d>& delta_vs, double t) {
     ensureHostElementsUpToDate();
 
