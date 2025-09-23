@@ -81,6 +81,48 @@ def _propagate_constellation_state(j2_lib, initial_elements, step_size, target_t
         j2_lib.j2_constellation_propagator_destroy(handle)
 
 
+def _apply_impulse_and_propagate(j2_lib, initial_elements, step_size, delta_v, target_time, compute_mode):
+    handle = j2_lib.j2_constellation_propagator_create(ctypes.c_double(initial_elements["t"]))
+    assert handle, "无法创建星座传播器"
+    try:
+        elem = CCompactOrbitalElements(
+            a=initial_elements["a"],
+            e=initial_elements["e"],
+            i=initial_elements["i"],
+            O=initial_elements["O"],
+            w=initial_elements["w"],
+            M=initial_elements["M"],
+        )
+        ret = j2_lib.j2_constellation_propagator_add_satellite(handle, ctypes.byref(elem))
+        assert ret == 0
+
+        ret = j2_lib.j2_constellation_propagator_set_step_size(handle, ctypes.c_double(step_size))
+        assert ret == 0
+        ret = j2_lib.j2_constellation_propagator_set_adaptive_step_size(handle, ctypes.c_int(0))
+        assert ret == 0
+        ret = j2_lib.j2_constellation_propagator_set_compute_mode(handle, ctypes.c_int(compute_mode))
+        assert ret == 0
+
+        delta_array = (ctypes.c_double * 3)(*delta_v)
+        ret = j2_lib.j2_constellation_propagator_apply_impulse_to_constellation(
+            handle,
+            delta_array,
+            ctypes.c_size_t(1),
+            ctypes.c_double(0.0),
+        )
+        assert ret == 0
+
+        ret = j2_lib.j2_constellation_propagator_propagate(handle, ctypes.c_double(target_time))
+        assert ret == 0
+
+        state = CStateVector()
+        ret = j2_lib.j2_constellation_propagator_get_satellite_state(handle, ctypes.c_size_t(0), ctypes.byref(state))
+        assert ret == 0
+        return state
+    finally:
+        j2_lib.j2_constellation_propagator_destroy(handle)
+
+
 @pytest.mark.parametrize("fraction", [0.25, 0.5, 1.0])
 def test_single_satellite_propagation_accuracy(j2_lib, j2_propagator, initial_elements, tolerances, fraction):
     mu = 3.986004418e14
@@ -126,6 +168,53 @@ def test_single_satellite_propagation_accuracy(j2_lib, j2_propagator, initial_el
     assert abs(back.e - result.e) < 1e-6
     assert abs(back.i - result.i) < 1e-6
 
+
+
+@pytest.mark.parametrize(
+    "step_size,target_seconds,delta_v",
+    [
+        (30.0, 600.0, [0.0, 0.2, 0.05]),
+        (60.0, 1800.0, [0.15, -0.1, 0.08]),
+    ],
+)
+def test_constellation_compute_modes_impulse_consistency(j2_lib, initial_elements, step_size, target_seconds, delta_v):
+    modes = [("CPU_SCALAR", 0), ("CPU_SIMD", 1)]
+    if bool(j2_lib.j2_constellation_propagator_is_cuda_available()):
+        modes.append(("GPU_CUDA", 2))
+
+    states = {}
+    for mode_name, mode_value in modes:
+        state = _apply_impulse_and_propagate(
+            j2_lib,
+            initial_elements,
+            step_size,
+            delta_v,
+            target_seconds,
+            mode_value,
+        )
+        pos = [float(state.r[i]) for i in range(3)]
+        vel = [float(state.v[i]) for i in range(3)]
+        states[mode_name] = (pos, vel)
+
+    ref_pos, ref_vel = states["CPU_SCALAR"]
+    ref_pos_norm = _norm3(ref_pos)
+    ref_vel_norm = _norm3(ref_vel)
+    rel_tol = 1e-8
+
+    for mode_name, (pos, vel) in states.items():
+        pos_diff = _diff_norm(pos, ref_pos)
+        vel_diff = _diff_norm(vel, ref_vel)
+        rel_pos_err = pos_diff / max(ref_pos_norm, 1.0)
+        rel_vel_err = vel_diff / max(ref_vel_norm, 1.0)
+
+        assert rel_pos_err <= rel_tol, (
+            f"position mismatch for {mode_name} vs CPU_SCALAR after impulse (step={step_size}, T={target_seconds}) -> "
+            f"rel_pos_err={rel_pos_err}, abs_pos_diff={pos_diff}"
+        )
+        assert rel_vel_err <= rel_tol, (
+            f"velocity mismatch for {mode_name} vs CPU_SCALAR after impulse (step={step_size}, T={target_seconds}) -> "
+            f"rel_vel_err={rel_vel_err}, abs_vel_diff={vel_diff}"
+        )
 
 @pytest.mark.parametrize(
     "delta_v,axis",
