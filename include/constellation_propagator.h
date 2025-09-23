@@ -138,13 +138,16 @@ private:
     
     // 角度归一化 (SIMD优化)
     void normalizeAnglesSIMD(std::vector<double, Eigen::aligned_allocator<double>>& angles);
-    
+
     // 标量误差估计：用单步dt和两步dt/2比较
     double estimateLocalErrorScalar(const CompactOrbitalElements& elem, double dt);
-    
+
     // SIMD版本的误差估计（针对小批量时退化为标量）
     double estimateLocalErrorSIMD(size_t idx, double dt);
-    
+
+    // 标量积分实现（复用逻辑给纯标量与SIMD尾部）
+    void propagateScalarRange(size_t begin, size_t end, double dt);
+
     // 单个卫星状态计算
     StateVector elementsToState(const CompactOrbitalElements& elements) const;
     

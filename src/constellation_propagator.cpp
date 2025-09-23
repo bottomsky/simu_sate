@@ -269,48 +269,45 @@ void ConstellationPropagator::propagateConstellation(double target_time) {
     current_time_ = target_time;
 }
 
-void ConstellationPropagator::propagateScalar(double dt) {
-    ensureHostElementsUpToDate();
+void ConstellationPropagator::propagateScalarRange(size_t begin, size_t end, double dt) {
+    auto computeDerivatives = [&](const CompactOrbitalElements& e) -> std::array<double, 3> {
+        return computeJ2SecularRates(e.a, e.e, e.i);
+    };
 
-    size_t n = elements_.size();
-    
-    for (size_t i = 0; i < n; ++i) {
-        // 提取单个卫星的轨道要素
-        CompactOrbitalElements elem = getSatelliteElements(i);
-        
-        auto computeDerivatives = [&](const CompactOrbitalElements& e) -> std::array<double, 3> {
-            return computeJ2SecularRates(e.a, e.e, e.i);
-        };
+    for (size_t i = begin; i < end; ++i) {
+        CompactOrbitalElements elem{elements_.a[i], elements_.e[i], elements_.i[i],
+                                   elements_.O[i], elements_.w[i], elements_.M[i]};
 
-        // RK4积分：k1在起点
         auto k1 = computeDerivatives(elem);
-        
-        // k2在中点，使用k1预测
+
         CompactOrbitalElements temp = elem;
         temp.O = normalizeAngle(temp.O + k1[0] * dt / 2.0);
         temp.w = normalizeAngle(temp.w + k1[1] * dt / 2.0);
         temp.M = normalizeAngle(temp.M + k1[2] * dt / 2.0);
         auto k2 = computeDerivatives(temp);
-        
-        // k3在中点，使用k2预测
+
         temp = elem;
         temp.O = normalizeAngle(temp.O + k2[0] * dt / 2.0);
         temp.w = normalizeAngle(temp.w + k2[1] * dt / 2.0);
         temp.M = normalizeAngle(temp.M + k2[2] * dt / 2.0);
         auto k3 = computeDerivatives(temp);
-        
-        // k4在终点，使用k3预测
+
         temp = elem;
         temp.O = normalizeAngle(temp.O + k3[0] * dt);
         temp.w = normalizeAngle(temp.w + k3[1] * dt);
         temp.M = normalizeAngle(temp.M + k3[2] * dt);
         auto k4 = computeDerivatives(temp);
-        
-        // 使用RK4加权平均更新轨道要素
-        elements_.O[i] = normalizeAngle(elem.O + (k1[0] + 2.0*k2[0] + 2.0*k3[0] + k4[0]) * dt / 6.0);
-        elements_.w[i] = normalizeAngle(elem.w + (k1[1] + 2.0*k2[1] + 2.0*k3[1] + k4[1]) * dt / 6.0);
-        elements_.M[i] = normalizeAngle(elem.M + (k1[2] + 2.0*k2[2] + 2.0*k3[2] + k4[2]) * dt / 6.0);
+
+        elements_.O[i] = normalizeAngle(elem.O + (k1[0] + 2.0 * k2[0] + 2.0 * k3[0] + k4[0]) * dt / 6.0);
+        elements_.w[i] = normalizeAngle(elem.w + (k1[1] + 2.0 * k2[1] + 2.0 * k3[1] + k4[1]) * dt / 6.0);
+        elements_.M[i] = normalizeAngle(elem.M + (k1[2] + 2.0 * k2[2] + 2.0 * k3[2] + k4[2]) * dt / 6.0);
     }
+}
+
+void ConstellationPropagator::propagateScalar(double dt) {
+    ensureHostElementsUpToDate();
+
+    propagateScalarRange(0, elements_.size(), dt);
 
     markDeviceElementsDirty();
 }
@@ -419,44 +416,10 @@ void ConstellationPropagator::propagateSIMD(double dt) {
         _mm256_store_pd(&elements_.M[i], M_vec);
     }
     
-    // 处理剩余的卫星 (标量RK4方式)
-    for (size_t i = simd_count; i < n; ++i) {
-        CompactOrbitalElements elem = getSatelliteElements(i);
-        
-        auto computeDerivatives = [&](const CompactOrbitalElements& e) -> std::array<double, 3> {
-            return computeJ2SecularRates(e.a, e.e, e.i);
-        };
-        
-        // RK4积分：k1在起点
-        auto k1 = computeDerivatives(elem);
-        
-        // k2在中点，使用k1预测
-        CompactOrbitalElements temp = elem;
-        temp.O = normalizeAngle(temp.O + k1[0] * dt / 2.0);
-        temp.w = normalizeAngle(temp.w + k1[1] * dt / 2.0);
-        temp.M = normalizeAngle(temp.M + k1[2] * dt / 2.0);
-        auto k2 = computeDerivatives(temp);
-        
-        // k3在中点，使用k2预测
-        temp = elem;
-        temp.O = normalizeAngle(temp.O + k2[0] * dt / 2.0);
-        temp.w = normalizeAngle(temp.w + k2[1] * dt / 2.0);
-        temp.M = normalizeAngle(temp.M + k2[2] * dt / 2.0);
-        auto k3 = computeDerivatives(temp);
-        
-        // k4在终点，使用k3预测
-        temp = elem;
-        temp.O = normalizeAngle(temp.O + k3[0] * dt);
-        temp.w = normalizeAngle(temp.w + k3[1] * dt);
-        temp.M = normalizeAngle(temp.M + k3[2] * dt);
-        auto k4 = computeDerivatives(temp);
-        
-        // 使用RK4加权平均更新轨道要素
-        elements_.O[i] = normalizeAngle(elem.O + (k1[0] + 2.0*k2[0] + 2.0*k3[0] + k4[0]) * dt / 6.0);
-        elements_.w[i] = normalizeAngle(elem.w + (k1[1] + 2.0*k2[1] + 2.0*k3[1] + k4[1]) * dt / 6.0);
-        elements_.M[i] = normalizeAngle(elem.M + (k1[2] + 2.0*k2[2] + 2.0*k3[2] + k4[2]) * dt / 6.0);
+    if (simd_count < n) {
+        propagateScalarRange(simd_count, n, dt);
     }
-    
+
     // 批量角度归一化
     normalizeAnglesSIMD(elements_.O);
     normalizeAnglesSIMD(elements_.w);
