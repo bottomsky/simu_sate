@@ -11,6 +11,7 @@
  */
 
 #include "j2_orbit_propagator.h"
+#include "CoordinateConverter.h"
 #include <algorithm>
 
 /**
@@ -26,10 +27,10 @@ J2OrbitPropagator::J2OrbitPropagator(const OrbitalElements& initial_elements)
       max_step_size_(300.0) 
 {
     // 构造时立即对输入的角度进行归一化，确保其在 [0, 2*PI) 范围内。
-    current_elements_.i = normalizeAngle(current_elements_.i);
-    current_elements_.O = normalizeAngle(current_elements_.O);
-    current_elements_.w = normalizeAngle(current_elements_.w);
-    current_elements_.M = normalizeAngle(current_elements_.M);
+    current_elements_.i = CoordinateConverter::normalizeAngle(current_elements_.i);
+    current_elements_.O = CoordinateConverter::normalizeAngle(current_elements_.O);
+    current_elements_.w = CoordinateConverter::normalizeAngle(current_elements_.w);
+    current_elements_.M = CoordinateConverter::normalizeAngle(current_elements_.M);
 }
 
 /**
@@ -175,23 +176,23 @@ OrbitalElements J2OrbitPropagator::rk4Integrate(const OrbitalElements& elements,
     
     // k2: 在步长中点使用k1预测的值计算导数
     OrbitalElements temp = elements;
-    temp.O = normalizeAngle(temp.O + k1[3] * dt / 2.0);
-    temp.w = normalizeAngle(temp.w + k1[4] * dt / 2.0);
-    temp.M = normalizeAngle(temp.M + k1[5] * dt / 2.0);
+    temp.O = CoordinateConverter::normalizeAngle(temp.O + k1[3] * dt / 2.0);
+    temp.w = CoordinateConverter::normalizeAngle(temp.w + k1[4] * dt / 2.0);
+    temp.M = CoordinateConverter::normalizeAngle(temp.M + k1[5] * dt / 2.0);
     Eigen::VectorXd k2 = computeDerivatives(temp);
     
     // k3: 在步长中点使用k2预测的值计算导数
     temp = elements;
-    temp.O = normalizeAngle(temp.O + k2[3] * dt / 2.0);
-    temp.w = normalizeAngle(temp.w + k2[4] * dt / 2.0);
-    temp.M = normalizeAngle(temp.M + k2[5] * dt / 2.0);
+    temp.O = CoordinateConverter::normalizeAngle(temp.O + k2[3] * dt / 2.0);
+    temp.w = CoordinateConverter::normalizeAngle(temp.w + k2[4] * dt / 2.0);
+    temp.M = CoordinateConverter::normalizeAngle(temp.M + k2[5] * dt / 2.0);
     Eigen::VectorXd k3 = computeDerivatives(temp);
     
     // k4: 在步长终点使用k3预测的值计算导数
     temp = elements;
-    temp.O = normalizeAngle(temp.O + k3[3] * dt);
-    temp.w = normalizeAngle(temp.w + k3[4] * dt);
-    temp.M = normalizeAngle(temp.M + k3[5] * dt);
+    temp.O = CoordinateConverter::normalizeAngle(temp.O + k3[3] * dt);
+    temp.w = CoordinateConverter::normalizeAngle(temp.w + k3[4] * dt);
+    temp.M = CoordinateConverter::normalizeAngle(temp.M + k3[5] * dt);
     Eigen::VectorXd k4 = computeDerivatives(temp);
     
     // 将k1, k2, k3, k4加权平均，更新轨道根数。
@@ -201,10 +202,10 @@ OrbitalElements J2OrbitPropagator::rk4Integrate(const OrbitalElements& elements,
     result.M += (k1[5] + 2.0 * k2[5] + 2.0 * k3[5] + k4[5]) * dt / 6.0;
     
     // 积分后对所有角度进行归一化。
-    result.i = normalizeAngle(result.i);
-    result.O = normalizeAngle(result.O);
-    result.w = normalizeAngle(result.w);
-    result.M = normalizeAngle(result.M);
+    result.i = CoordinateConverter::normalizeAngle(result.i);
+    result.O = CoordinateConverter::normalizeAngle(result.O);
+    result.w = CoordinateConverter::normalizeAngle(result.w);
+    result.M = CoordinateConverter::normalizeAngle(result.M);
     
     return result;
 }
@@ -261,27 +262,7 @@ double J2OrbitPropagator::estimateLocalError(const OrbitalElements& elements, do
  * @param e 偏心率。
  * @return 偏近点角 E（弧度）。
  */
-double J2OrbitPropagator::computeEccentricAnomaly(double M, double e) {
-    // 将平近点角归一化到 [0, 2*PI) 范围。
-    M = normalizeAngle(M);
-    
-    // 根据偏心率选择一个合适的初始猜测值 E0，这有助于加速收敛。
-    double E = (e < 0.8) ? M : M_PI;
-    
-    // 牛顿法迭代求解。
-    double f_E, df_E;
-    int max_iter = 100;
-    for (int i = 0; i < max_iter; ++i) {
-        f_E = E - e * std::sin(E) - M;
-        if (std::abs(f_E) < EPSILON) {
-            break; // 当误差足够小时，停止迭代。
-        }
-        df_E = 1.0 - e * std::cos(E);
-        E = E - f_E / df_E;
-    }
-    
-    return E;
-}
+
 
 /**
  * @brief 根据偏近点角 E 和偏心率 e 计算真近点角 nu。
@@ -289,25 +270,14 @@ double J2OrbitPropagator::computeEccentricAnomaly(double M, double e) {
  * @param e 偏心率。
  * @return 真近点角 nu（弧度）。
  */
-double J2OrbitPropagator::computeTrueAnomaly(double E, double e) {
-    // 使用半角公式计算，可以提高数值稳定性。
-    double tan_nu_2 = std::sqrt((1.0 + e) / (1.0 - e)) * std::tan(E / 2.0);
-    double nu = 2.0 * std::atan(tan_nu_2);
-    return normalizeAngle(nu);
-}
+
 
 /**
  * @brief 将角度归一化到 [0, 2*PI) 范围内。
  * @param angle 要归一化的角度（弧度）。
  * @return 归一化后的角度（弧度）。
  */
-double J2OrbitPropagator::normalizeAngle(double angle) {
-    angle = std::fmod(angle, 2.0 * M_PI);
-    if (angle < 0) {
-        angle += 2.0 * M_PI;
-    }
-    return angle;
-}
+
 
 /**
  * @brief 将轨道根数转换为地心惯性系（ECI）下的状态向量（位置和速度）。
@@ -315,56 +285,9 @@ double J2OrbitPropagator::normalizeAngle(double angle) {
  * @return 包含位置和速度的状态向量。
  */
 StateVector J2OrbitPropagator::elementsToState(const OrbitalElements& elements) {
-    StateVector state;
-    
-    double a = elements.a;
-    double e = elements.e;
-    double i = elements.i;
-    double O = elements.O;
-    double w = elements.w;
-    double M = elements.M;
-    
-    // 1. 从平近点角 M 计算偏近点角 E。
-    double E = computeEccentricAnomaly(M, e);
-    
-    // 2. 从偏近点角 E 计算真近点角 nu。
-    double nu = computeTrueAnomaly(E, e);
-    
-    // 3. 计算地心距 r。
-    double r_mag = a * (1.0 - e * std::cos(E));
-    
-    // 4. 在轨道平面（周航坐标系）内计算位置和速度。
-    Eigen::Vector3d r_perifocal(r_mag * std::cos(nu), r_mag * std::sin(nu), 0.0);
-    
-    double p = a * (1.0 - e * e); // 半通径
-    double v_mag_factor = std::sqrt(MU / p);
-    Eigen::Vector3d v_perifocal(-v_mag_factor * std::sin(nu), v_mag_factor * (e + std::cos(nu)), 0.0);
-
-    // 5. 构建从周航坐标系到地心惯性系（ECI）的旋转矩阵。
-    // 这是一个 3-1-3 欧拉角旋转：Rz(O) * Rx(i) * Rz(w) 的转置。
-    Eigen::Matrix3d R;
-    double cosO = std::cos(O), sinO = std::sin(O);
-    double cosi = std::cos(i), sini = std::sin(i);
-    double cosw = std::cos(w), sinw = std::sin(w);
-    
-    R(0,0) = cosO * cosw - sinO * sinw * cosi;
-    R(0,1) = -cosO * sinw - sinO * cosw * cosi;
-    R(0,2) = sinO * sini;
-    
-    R(1,0) = sinO * cosw + cosO * sinw * cosi;
-    R(1,1) = -sinO * sinw + cosO * cosw * cosi;
-    R(1,2) = -cosO * sini;
-    
-    R(2,0) = sinw * sini;
-    R(2,1) = cosw * sini;
-    R(2,2) = cosi;
-    
-    // 6. 将周航坐标系下的位置和速度旋转到ECI系。
-    state.r = R * r_perifocal;
-    state.v = R * v_perifocal;
-    
-    return state;
+    return CoordinateConverter::elementsToState(elements);
 }
+
 
 /**
  * @brief 将地心惯性系（ECI）下的状态向量（位置和速度）转换为轨道根数。
@@ -373,107 +296,9 @@ StateVector J2OrbitPropagator::elementsToState(const OrbitalElements& elements) 
  * @return 轨道根数。
  */
 OrbitalElements J2OrbitPropagator::stateToElements(const StateVector& state, double t) {
-    OrbitalElements elements;
-    elements.t = t;
-    
-    const Eigen::Vector3d& r_vec = state.r;
-    const Eigen::Vector3d& v_vec = state.v;
-    double r = r_vec.norm();
-    double v = v_vec.norm();
-    
-    // 1. 计算角动量矢量 h。
-    Eigen::Vector3d h_vec = r_vec.cross(v_vec);
-    double h = h_vec.norm();
-    
-    // 2. 计算升交点矢量 n。
-    Eigen::Vector3d K_hat(0, 0, 1);
-    Eigen::Vector3d n_vec = K_hat.cross(h_vec);
-    double n = n_vec.norm();
-    
-    // 3. 计算偏心率矢量 e。
-    Eigen::Vector3d e_vec = ((v*v - MU/r) * r_vec - (r_vec.dot(v_vec)) * v_vec) / MU;
-    double ecc = e_vec.norm();
-    elements.e = ecc;
-    
-    // 4. 计算轨道能量 Epsilon，并从中得到半长轴 a。
-    double energy = v*v/2.0 - MU/r;
-    elements.a = -MU / (2.0 * energy);
-    
-    // 5. 计算倾角 i。
-    constexpr double SMALL_ECC = 1e-8;
-    constexpr double SMALL_NORM = 1e-12;
-
-    double cos_i = std::clamp(h_vec.z() / h, -1.0, 1.0);
-    elements.i = std::acos(cos_i);
-
-    bool equatorial = n < SMALL_NORM;
-    if (!equatorial) {
-        double cos_O = std::clamp(n_vec.x() / n, -1.0, 1.0);
-        elements.O = std::acos(cos_O);
-        if (n_vec.y() < 0) {
-            elements.O = 2.0 * M_PI - elements.O;
-        }
-    } else {
-        elements.O = 0.0;
-    }
-
-    double w = 0.0;
-    double nu = 0.0;
-
-    if (ecc > SMALL_ECC) {
-        if (!equatorial) {
-            double cos_w = std::clamp(n_vec.dot(e_vec) / (n * ecc), -1.0, 1.0);
-            w = std::acos(cos_w);
-            if (e_vec.z() < 0) {
-                w = 2.0 * M_PI - w;
-            }
-        } else {
-            w = normalizeAngle(std::atan2(e_vec.y(), e_vec.x()));
-        }
-
-        double cos_nu = std::clamp(e_vec.dot(r_vec) / (ecc * r), -1.0, 1.0);
-        nu = std::acos(cos_nu);
-        if (r_vec.dot(v_vec) < 0) {
-            nu = 2.0 * M_PI - nu;
-        }
-    } else {
-        elements.e = 0.0;
-        Eigen::Vector3d h_hat = h_vec.normalized();
-        Eigen::Vector3d node_hat;
-        if (!equatorial) {
-            node_hat = n_vec / n;
-        } else {
-            node_hat = Eigen::Vector3d::UnitX();
-        }
-        Eigen::Vector3d perigee_hat = h_hat.cross(node_hat);
-        nu = std::atan2(r_vec.dot(perigee_hat), r_vec.dot(node_hat));
-        nu = normalizeAngle(nu);
-    }
-
-    elements.w = normalizeAngle(w);
-
-    double mean_anomaly;
-    if (elements.e > SMALL_ECC) {
-        double sqrt_one_minus_e2 = std::sqrt(std::max(0.0, 1.0 - elements.e * elements.e));
-        double sin_E = sqrt_one_minus_e2 * std::sin(nu) / (1.0 + elements.e * std::cos(nu));
-        double cos_E = (elements.e + std::cos(nu)) / (1.0 + elements.e * std::cos(nu));
-        double E = std::atan2(sin_E, cos_E);
-        E = normalizeAngle(E);
-        mean_anomaly = E - elements.e * std::sin(E);
-    } else {
-        mean_anomaly = nu;
-    }
-
-    elements.M = normalizeAngle(mean_anomaly);
-    
-    // 归一化所有角度。
-    elements.i = normalizeAngle(elements.i);
-    elements.O = normalizeAngle(elements.O);
-    elements.w = normalizeAngle(elements.w);
-    elements.M = normalizeAngle(elements.M);
-    
-    return elements;
+    return CoordinateConverter::stateToElements(state, t);
 }
+
 
 /**
  * @brief 在ECI坐标系下施加脉冲，计算更新后的轨道根数。

@@ -6,17 +6,7 @@
 #include <iostream>
 #include "math_defs.h"
 #include "common_types.h"
-
-// 轨道要素结构体
-struct OrbitalElements {
-    double a;   // 半长轴 (m)
-    double e;   // 偏心率
-    double i;   // 倾角 (rad)
-    double O;   // 升交点赤经 (rad)
-    double w;   // 近地点幅角 (rad)
-    double M;   // 平近点角 (rad)
-    double t;   // 历元时间 (s)
-};
+#include "orbital_elements.h"
 
 class J2OrbitPropagator {
 public:
@@ -72,14 +62,6 @@ private:
     // 自适应步长误差估计（嵌套RK）
     double estimateLocalError(const OrbitalElements& elements, double dt);
     
-    // 计算偏近点角
-    double computeEccentricAnomaly(double M, double e);
-    
-    // 计算真近点角
-    double computeTrueAnomaly(double E, double e);
-    
-    // 角度归一化
-    double normalizeAngle(double angle);
 };
 
 #endif // J2_ORBIT_PROPAGATOR_H

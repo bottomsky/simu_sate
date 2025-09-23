@@ -10,6 +10,7 @@
 #include <iostream>
 #include "math_defs.h"
 #include "common_types.h"
+#include "orbital_elements.h"
 
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
 #include <cuda_runtime.h>
@@ -17,16 +18,6 @@
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 #endif
-
-// 压紧的轨道要素结构体 (不包含历元时间)
-struct CompactOrbitalElements {
-    double a;   // 半长轴 (m)
-    double e;   // 偏心率
-    double i;   // 倾角 (rad)
-    double O;   // 升交点赤经 (rad)
-    double w;   // 近地点幅角 (rad)
-    double M;   // 平近点角 (rad)
-};
 
 // SIMD优化的轨道要素数组 (AoS -> SoA)
 struct SIMDOrbitalElements {
@@ -159,11 +150,6 @@ private:
                                 const std::vector<Eigen::Vector3d>& delta_vs,
                                 double t);
     
-    // 辅助函数
-    double computeEccentricAnomaly(double M, double e) const;
-    double computeTrueAnomaly(double E, double e) const;
-    double normalizeAngle(double angle) const;
-
     // CUDA初始化与清理在所有编译单元中可见（实现内部自行判断）
     void initializeCUDA();
     void cleanupCUDA();

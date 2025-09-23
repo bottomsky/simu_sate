@@ -81,6 +81,7 @@ include_directories(
 
 # 源文件
 set(SOURCES
+    src/CoordinateConverter.cpp
     src/j2_orbit_propagator.cpp
     src/j2_orbit_propagator_c.cpp
     src/j2_constellation_propagator.cpp
@@ -95,6 +96,8 @@ endif()
 
 # 头文件
 set(HEADERS
+    include/CoordinateConverter.h
+    include/orbital_elements.h
     include/j2_orbit_propagator.h
     include/j2_orbit_propagator_c.h
     include/j2_constellation_propagator.h

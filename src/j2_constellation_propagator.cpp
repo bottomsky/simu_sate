@@ -1,5 +1,5 @@
 #include "j2_constellation_propagator.h"
-#include "j2_orbit_propagator.h"  // 用于CUDA路径中的状态->要素转换
+#include "CoordinateConverter.h"
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -591,66 +591,21 @@ StateVector J2ConstellationPropagator::getSatelliteState(size_t satellite_id) co
 }
 
 StateVector J2ConstellationPropagator::elementsToState(const CompactOrbitalElements& elements) const {
-    StateVector state;
-    
-    double a = elements.a, e = elements.e, i = elements.i;
-    double O = elements.O, w = elements.w, M = elements.M;
-    
-    // 计算偏近点角和真近点角
-    double E = computeEccentricAnomaly(M, e);
-    double nu = computeTrueAnomaly(E, e);
-    
-    // 计算地心距
-    double r = a * (1.0 - e * std::cos(E));
-    
-    // 轨道平面内的位置矢量
-    double x_perifocal = r * std::cos(nu);
-    double y_perifocal = r * std::sin(nu);
-    
-    // 计算转换矩阵
-    double cosO = std::cos(O), sinO = std::sin(O);
-    double cosi = std::cos(i), sini = std::sin(i);
-    double cosw = std::cos(w), sinw = std::sin(w);
-    
-    Eigen::Matrix3d R;
-    R << cosO*cosw - sinO*sinw*cosi, -cosO*sinw - sinO*cosw*cosi, sinO*sini,
-         sinO*cosw + cosO*sinw*cosi, -sinO*sinw + cosO*cosw*cosi, -cosO*sini,
-         sinw*sini, cosw*sini, cosi;
-    
-    // 转换到惯性系
-    Eigen::Vector3d r_perifocal(x_perifocal, y_perifocal, 0.0);
-    state.r = R * r_perifocal;
-    
-    // 计算速度矢量 (与 J2OrbitPropagator 保持一致的方法)
-    double p = a * (1.0 - e * e); // 半通径
-    double v_mag_factor = std::sqrt(MU / p);
-    Eigen::Vector3d v_perifocal(-v_mag_factor * std::sin(nu), v_mag_factor * (e + std::cos(nu)), 0.0);
-    
-    state.v = R * v_perifocal;
-    
-    return state;
+    return CoordinateConverter::elementsToState(elements);
 }
+
 
 CompactOrbitalElements J2ConstellationPropagator::applyImpulseScalar(const CompactOrbitalElements& elements,
                                                                   const Eigen::Vector3d& delta_v, double t) const {
     // 将要素转为状态
-    StateVector s = elementsToState(elements);
+    StateVector s = CoordinateConverter::elementsToState(elements);
     // 施加ΔV
     StateVector s_new;
     s_new.r = s.r;
     s_new.v = s.v + delta_v;
     
-    // 将状态转回要素（复用J2OrbitPropagator实现更稳妥，但此处按星座类已有流程实现）
-    // 这里我们临时构建一个J2OrbitPropagator来复用其stateToElements逻辑
-    OrbitalElements oe_full; oe_full.a = elements.a; oe_full.e = elements.e; oe_full.i = elements.i;
-    oe_full.O = elements.O; oe_full.w = elements.w; oe_full.M = elements.M; oe_full.t = t;
-    J2OrbitPropagator propagator(oe_full);
-    OrbitalElements new_full = propagator.stateToElements(s_new, t);
-    
-    CompactOrbitalElements out;
-    out.a = new_full.a; out.e = new_full.e; out.i = new_full.i;
-    out.O = new_full.O; out.w = new_full.w; out.M = new_full.M;
-    return out;
+    // 将状态转回要素
+    return CoordinateConverter::stateToCompactElements(s_new, t);
 }
 
 void J2ConstellationPropagator::applyImpulseToConstellation(const std::vector<Eigen::Vector3d>& delta_vs, double t) {
@@ -712,16 +667,13 @@ void J2ConstellationPropagator::applyImpulseToConstellation(const std::vector<Ei
                 StateVector new_state;
                 new_state.r = Eigen::Vector3d(rxyz[idx], rxyz[idx + n], rxyz[idx + 2 * n]);
                 new_state.v = Eigen::Vector3d(vxyz[idx], vxyz[idx + n], vxyz[idx + 2 * n]);
-                // 复用单星J2转换逻辑
-                J2OrbitPropagator temp(OrbitalElements{elements_.a[idx], elements_.e[idx], elements_.i[idx],
-                                                       elements_.O[idx], elements_.w[idx], elements_.M[idx], t});
-                OrbitalElements updated_full = temp.stateToElements(new_state, t);
-                elements_.a[idx] = updated_full.a;
-                elements_.e[idx] = updated_full.e;
-                elements_.i[idx] = updated_full.i;
-                elements_.O[idx] = updated_full.O;
-                elements_.w[idx] = updated_full.w;
-                elements_.M[idx] = updated_full.M;
+                CompactOrbitalElements updated = CoordinateConverter::stateToCompactElements(new_state, t);
+                elements_.a[idx] = updated.a;
+                elements_.e[idx] = updated.e;
+                elements_.i[idx] = updated.i;
+                elements_.O[idx] = updated.O;
+                elements_.w[idx] = updated.w;
+                elements_.M[idx] = updated.M;
             }
 #else
             // 理论上不会到这里，但为了安全，回退
@@ -800,15 +752,13 @@ void J2ConstellationPropagator::applyImpulseToSatellites(const std::vector<size_
                 StateVector new_state;
                 new_state.r = Eigen::Vector3d(rxyz[k], rxyz[k + m], rxyz[k + 2 * m]);
                 new_state.v = Eigen::Vector3d(vxyz[k], vxyz[k + m], vxyz[k + 2 * m]);
-                J2OrbitPropagator temp(OrbitalElements{elements_.a[idx], elements_.e[idx], elements_.i[idx],
-                                                       elements_.O[idx], elements_.w[idx], elements_.M[idx], t});
-                OrbitalElements updated_full = temp.stateToElements(new_state, t);
-                elements_.a[idx] = updated_full.a;
-                elements_.e[idx] = updated_full.e;
-                elements_.i[idx] = updated_full.i;
-                elements_.O[idx] = updated_full.O;
-                elements_.w[idx] = updated_full.w;
-                elements_.M[idx] = updated_full.M;
+                CompactOrbitalElements updated = CoordinateConverter::stateToCompactElements(new_state, t);
+                elements_.a[idx] = updated.a;
+                elements_.e[idx] = updated.e;
+                elements_.i[idx] = updated.i;
+                elements_.O[idx] = updated.O;
+                elements_.w[idx] = updated.w;
+                elements_.M[idx] = updated.M;
             }
 #else
             applyImpulseSubsetSIMD(satellite_ids, delta_vs, t);
@@ -918,29 +868,11 @@ Eigen::MatrixXd J2ConstellationPropagator::getAllPositions() const {
     return positions;
 }
 
-double J2ConstellationPropagator::computeEccentricAnomaly(double M, double e) const {
-    M = normalizeAngle(M);
-    double E = (e < 0.8) ? M : (M > M_PI ? M - e : M + e);
-    
-    for (int iter = 0; iter < 20; ++iter) {
-        double delta = (E - e * std::sin(E) - M) / (1.0 - e * std::cos(E));
-        E -= delta;
-        if (std::abs(delta) < EPSILON) break;
-    }
-    
-    return E;
-}
 
-double J2ConstellationPropagator::computeTrueAnomaly(double E, double e) const {
-    double tan_nu_2 = std::sqrt((1.0 + e) / (1.0 - e)) * std::tan(E / 2.0);
-    return normalizeAngle(2.0 * std::atan(tan_nu_2));
-}
 
-double J2ConstellationPropagator::normalizeAngle(double angle) const {
-    angle = std::fmod(angle, 2.0 * M_PI);
-    if (angle < 0) angle += 2.0 * M_PI;
-    return angle;
-}
+
+
+
 
 bool J2ConstellationPropagator::isCudaAvailable() noexcept {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
