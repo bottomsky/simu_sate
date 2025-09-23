@@ -123,15 +123,26 @@ void ConstellationPropagator::setSampleInterval(double interval) {
 }
 
 void ConstellationPropagator::recalcSampleStride() {
+    if (step_size_ <= 0.0) {
+        throw std::invalid_argument("Step size must be positive");
+    }
+
+    if (sample_interval_ < step_size_) {
+        steps_per_sample_ = 1;
+        sample_interval_ = step_size_;
+        return;
+    }
+
     const double ratio = sample_interval_ / step_size_;
-    if (ratio < 1.0 - 1e-9) {
-        throw std::invalid_argument("Sample interval must not be smaller than step size");
+    size_t steps = static_cast<size_t>(std::round(ratio));
+    if (steps == 0) {
+        steps = 1;
     }
-    const double rounded = std::round(ratio);
-    if (std::abs(rounded - ratio) > 1e-8) {
-        throw std::invalid_argument("Sample interval must be an integer multiple of step size");
+    if (std::abs(static_cast<double>(steps) - ratio) > 1e-8) {
+        steps = static_cast<size_t>(std::ceil(ratio));
     }
-    steps_per_sample_ = std::max<size_t>(1, static_cast<size_t>(rounded));
+
+    steps_per_sample_ = steps;
     sample_interval_ = steps_per_sample_ * step_size_;
 }
 
