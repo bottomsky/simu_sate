@@ -85,7 +85,7 @@ set(SOURCES
     src/j2_orbit_propagator_c.cpp
     src/j2_constellation_propagator.cpp
     src/j2_constellation_propagator_c.cpp
-    src/j2_constellation_builder.cpp
+    src/constellation_builder.cpp
 )
 
 if(CMAKE_CUDA_COMPILER)
@@ -98,7 +98,7 @@ set(HEADERS
     include/j2_orbit_propagator_c.h
     include/j2_constellation_propagator.h
     include/j2_constellation_propagator_c.h
-    include/j2_constellation_builder.h
+    include/constellation_builder.h
     include/common_types.h
     include/math_defs.h
 )

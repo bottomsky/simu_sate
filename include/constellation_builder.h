@@ -1,5 +1,5 @@
-#ifndef J2_CONSTELLATION_BUILDER_H
-#define J2_CONSTELLATION_BUILDER_H
+#ifndef CONSTELLATION_BUILDER_H
+#define CONSTELLATION_BUILDER_H
 
 #include <vector>
 #include <cstddef>
@@ -20,9 +20,9 @@ struct WalkerDeltaConfig {
     double epoch = 0.0;                // Epoch time (s)
 };
 
-class J2ConstellationBuilder {
+class ConstellationBuilder {
 public:
     static std::vector<CompactOrbitalElements> CreateWalkerDelta(const WalkerDeltaConfig& cfg);
 };
 
-#endif // J2_CONSTELLATION_BUILDER_H
+#endif // CONSTELLATION_BUILDER_H

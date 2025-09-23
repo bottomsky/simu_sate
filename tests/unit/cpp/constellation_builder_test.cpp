@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "j2_constellation_builder.h"
+#include "constellation_builder.h"
 
 namespace {
 constexpr double kTwoPi = 2.0 * M_PI;
@@ -12,7 +12,7 @@ double normalize(double value) {
 }
 }
 
-TEST(J2ConstellationBuilderTest, WalkerDeltaSpacing) {
+TEST(ConstellationBuilderTest, WalkerDeltaSpacing) {
     WalkerDeltaConfig cfg;
     cfg.plane_count = 3;
     cfg.sats_per_plane = 4;
@@ -20,7 +20,7 @@ TEST(J2ConstellationBuilderTest, WalkerDeltaSpacing) {
     cfg.altitude = 550e3;
     cfg.inclination = 53.0 * M_PI / 180.0;
 
-    auto constellation = J2ConstellationBuilder::CreateWalkerDelta(cfg);
+    auto constellation = ConstellationBuilder::CreateWalkerDelta(cfg);
     ASSERT_EQ(constellation.size(), cfg.plane_count * cfg.sats_per_plane);
 
     const double expected_raan_spacing = kTwoPi / static_cast<double>(cfg.plane_count);

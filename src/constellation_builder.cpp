@@ -1,4 +1,4 @@
-#include "j2_constellation_builder.h"
+#include "constellation_builder.h"
 
 #include <cmath>
 #include <stdexcept>
@@ -24,7 +24,7 @@ void validate_config(const WalkerDeltaConfig& cfg) {
 }
 }
 
-std::vector<CompactOrbitalElements> J2ConstellationBuilder::CreateWalkerDelta(const WalkerDeltaConfig& cfg) {
+std::vector<CompactOrbitalElements> ConstellationBuilder::CreateWalkerDelta(const WalkerDeltaConfig& cfg) {
     validate_config(cfg);
 
     const std::size_t total_satellites = cfg.plane_count * cfg.sats_per_plane;
