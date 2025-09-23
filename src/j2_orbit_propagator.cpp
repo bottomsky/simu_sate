@@ -284,7 +284,7 @@ double J2OrbitPropagator::estimateLocalError(const OrbitalElements& elements, do
  * @param elements 轨道根数。
  * @return 包含位置和速度的状态向量。
  */
-StateVector J2OrbitPropagator::elementsToState(const OrbitalElements& elements) {
+StateVector J2OrbitPropagator::elementsToState(const OrbitalElements& elements) const {
     return CoordinateConverter::elementsToState(elements);
 }
 
@@ -295,7 +295,7 @@ StateVector J2OrbitPropagator::elementsToState(const OrbitalElements& elements) 
  * @param t 对应的历元时间。
  * @return 轨道根数。
  */
-OrbitalElements J2OrbitPropagator::stateToElements(const StateVector& state, double t) {
+OrbitalElements J2OrbitPropagator::stateToElements(const StateVector& state, double t) const {
     return CoordinateConverter::stateToElements(state, t);
 }
 

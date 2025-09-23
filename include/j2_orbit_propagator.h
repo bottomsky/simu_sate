@@ -20,14 +20,21 @@ public:
     OrbitalElements propagate(double t);
     
     // 从轨道要素计算位置速度
-    StateVector elementsToState(const OrbitalElements& elements);
+    StateVector elementsToState(const OrbitalElements& elements) const;
     
     // 从位置速度计算轨道要素
-    OrbitalElements stateToElements(const StateVector& state, double t);
+    OrbitalElements stateToElements(const StateVector& state, double t) const;
     
     // 施加脉冲（标量版本）
     OrbitalElements applyImpulse(const OrbitalElements& elements, 
                                  const Eigen::Vector3d& delta_v, double t);
+    
+    // 获取当前轨道要素（供 C 接口使用）
+    OrbitalElements getCurrentElements() const { return current_elements_; }
+
+    StateVector getCurrentState() const {
+        return elementsToState(current_elements_);
+    }
     
     // 设置积分步长
     void setStepSize(double step) { step_size_ = step; }
