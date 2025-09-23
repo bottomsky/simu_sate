@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stddef.h>
 #include "../include/j2_orbit_propagator_c.h"
-#include "../include/constellation_propagator_c.h"
+#include "../include/j2_constellation_propagator_c.h"
 
 int main() {
     printf("C Structure Layout Analysis\n");

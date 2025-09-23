@@ -1,5 +1,5 @@
-#ifndef CONSTELLATION_PROPAGATOR_C_H
-#define CONSTELLATION_PROPAGATOR_C_H
+#ifndef J2_CONSTELLATION_PROPAGATOR_C_H
+#define J2_CONSTELLATION_PROPAGATOR_C_H
 
 #include <stddef.h>  // 确保 size_t 类型定义正确
 
@@ -39,13 +39,13 @@ typedef struct {
 
 // 计算模式枚举
 typedef enum {
-    COMPUTE_MODE_CPU_SCALAR = 0,
-    COMPUTE_MODE_CPU_SIMD = 1,
-    COMPUTE_MODE_GPU_CUDA = 2
-} ComputeMode;
+    J2_CONSTELLATION_COMPUTE_MODE_CPU_SCALAR = 0,
+    J2_CONSTELLATION_COMPUTE_MODE_CPU_SIMD = 1,
+    J2_CONSTELLATION_COMPUTE_MODE_GPU_CUDA = 2
+} J2ConstellationComputeMode;
 
-// 不透明指针，用于隐藏ConstellationPropagator类的实现细节
-typedef void* ConstellationPropagatorHandle;
+// 不透明指针，用于隐藏J2ConstellationPropagator类的实现细节
+typedef void* J2ConstellationPropagatorHandle;
 
 // === 创建和销毁函数 ===
 
@@ -54,13 +54,13 @@ typedef void* ConstellationPropagatorHandle;
  * @param epoch_time 星座统一历元时间 (s)
  * @return 传播器句柄，失败时返回NULL
  */
-J2_API ConstellationPropagatorHandle constellation_propagator_create(double epoch_time);
+J2_API J2ConstellationPropagatorHandle j2_constellation_propagator_create(double epoch_time);
 
 /**
  * @brief 销毁星座传播器实例
  * @param handle 传播器句柄
  */
-J2_API void constellation_propagator_destroy(ConstellationPropagatorHandle handle);
+J2_API void j2_constellation_propagator_destroy(J2ConstellationPropagatorHandle handle);
 
 // === 卫星管理函数 ===
 
@@ -71,7 +71,7 @@ J2_API void constellation_propagator_destroy(ConstellationPropagatorHandle handl
  * @param count 卫星数量
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_add_satellites(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_add_satellites(J2ConstellationPropagatorHandle handle, 
                                                   const CCompactOrbitalElements* satellites, 
                                                   size_t count);
 
@@ -81,7 +81,7 @@ J2_API int constellation_propagator_add_satellites(ConstellationPropagatorHandle
  * @param satellite 卫星轨道要素
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_add_satellite(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_add_satellite(J2ConstellationPropagatorHandle handle, 
                                                  const CCompactOrbitalElements* satellite);
 
 /**
@@ -90,7 +90,7 @@ J2_API int constellation_propagator_add_satellite(ConstellationPropagatorHandle 
  * @param count 输出的卫星数量
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_get_satellite_count(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_get_satellite_count(J2ConstellationPropagatorHandle handle, 
                                                        size_t* count);
 
 // === 轨道传播函数 ===
@@ -101,7 +101,7 @@ J2_API int constellation_propagator_get_satellite_count(ConstellationPropagatorH
  * @param target_time 目标时间 (s)
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_propagate(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_propagate(J2ConstellationPropagatorHandle handle, 
                                              double target_time);
 
 /**
@@ -111,7 +111,7 @@ J2_API int constellation_propagator_propagate(ConstellationPropagatorHandle hand
  * @param elements 输出的轨道要素
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_get_satellite_elements(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_get_satellite_elements(J2ConstellationPropagatorHandle handle, 
                                                           size_t satellite_id, 
                                                           CCompactOrbitalElements* elements);
 
@@ -122,7 +122,7 @@ J2_API int constellation_propagator_get_satellite_elements(ConstellationPropagat
  * @param state 输出的状态向量
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_get_satellite_state(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_get_satellite_state(J2ConstellationPropagatorHandle handle, 
                                                        size_t satellite_id, 
                                                        CStateVector* state);
 
@@ -133,7 +133,7 @@ J2_API int constellation_propagator_get_satellite_state(ConstellationPropagatorH
  * @param count 输入：数组容量(卫星数量)，输出：实际填充的卫星数量
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_get_all_positions(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_get_all_positions(J2ConstellationPropagatorHandle handle, 
                                                      double* positions, 
                                                      size_t* count);
 
@@ -147,7 +147,7 @@ J2_API int constellation_propagator_get_all_positions(ConstellationPropagatorHan
  * @param impulse_time 脉冲施加时间 (s)
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_apply_impulse_to_constellation(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_apply_impulse_to_constellation(J2ConstellationPropagatorHandle handle, 
                                                                   const double* delta_vs, 
                                                                   size_t count, 
                                                                   double impulse_time);
@@ -161,7 +161,7 @@ J2_API int constellation_propagator_apply_impulse_to_constellation(Constellation
  * @param impulse_time 脉冲施加时间 (s)
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_apply_impulse_to_satellites(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_apply_impulse_to_satellites(J2ConstellationPropagatorHandle handle, 
                                                                const size_t* satellite_ids, 
                                                                const double* delta_vs, 
                                                                size_t count, 
@@ -175,7 +175,7 @@ J2_API int constellation_propagator_apply_impulse_to_satellites(ConstellationPro
  * @param step_size 步长 (s)
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_set_step_size(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_set_step_size(J2ConstellationPropagatorHandle handle, 
                                                  double step_size);
 
 /**
@@ -184,8 +184,8 @@ J2_API int constellation_propagator_set_step_size(ConstellationPropagatorHandle 
  * @param mode 计算模式
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_set_compute_mode(ConstellationPropagatorHandle handle, 
-                                                    ComputeMode mode);
+J2_API int j2_constellation_propagator_set_compute_mode(J2ConstellationPropagatorHandle handle, 
+                                                    J2ConstellationComputeMode mode);
 
 /**
  * @brief 启用或禁用自适应步长
@@ -193,7 +193,7 @@ J2_API int constellation_propagator_set_compute_mode(ConstellationPropagatorHand
  * @param enable 1启用，0禁用
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_set_adaptive_step_size(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_set_adaptive_step_size(J2ConstellationPropagatorHandle handle, 
                                                           int enable);
 
 /**
@@ -204,7 +204,7 @@ J2_API int constellation_propagator_set_adaptive_step_size(ConstellationPropagat
  * @param max_step 最大步长 (s)
  * @return 0表示成功，非0表示失败
  */
-J2_API int constellation_propagator_set_adaptive_parameters(ConstellationPropagatorHandle handle, 
+J2_API int j2_constellation_propagator_set_adaptive_parameters(J2ConstellationPropagatorHandle handle, 
                                                            double tolerance, 
                                                            double min_step, 
                                                            double max_step);
@@ -213,10 +213,10 @@ J2_API int constellation_propagator_set_adaptive_parameters(ConstellationPropaga
  * @brief 检查CUDA可用性
  * @return 1表示CUDA可用，0表示不可用
  */
-J2_API int constellation_propagator_is_cuda_available(void);
+J2_API int j2_constellation_propagator_is_cuda_available(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // CONSTELLATION_PROPAGATOR_C_H
+#endif // J2_CONSTELLATION_PROPAGATOR_C_H

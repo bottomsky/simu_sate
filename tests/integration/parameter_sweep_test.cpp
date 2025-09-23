@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "j2_orbit_propagator.h"
-#include "constellation_propagator.h"
+#include "j2_constellation_propagator.h"
 #include "math_defs.h"
 #include <fstream>
 #include <iomanip>
@@ -443,24 +443,24 @@ TEST_F(ParameterSweepTest, ThreePathConsistency_AllModes) {
     double T = 7200.0; // 2小时
 
     // 标量
-    ConstellationPropagator prop_scalar(0.0);
-    prop_scalar.setComputeMode(ConstellationPropagator::CPU_SCALAR);
+    J2ConstellationPropagator prop_scalar(0.0);
+    prop_scalar.setComputeMode(J2ConstellationPropagator::CPU_SCALAR);
     prop_scalar.setStepSize(30.0);
     prop_scalar.addSatellites(sats);
     prop_scalar.propagateConstellation(T);
 
     // SIMD
-    ConstellationPropagator prop_simd(0.0);
-    prop_simd.setComputeMode(ConstellationPropagator::CPU_SIMD);
+    J2ConstellationPropagator prop_simd(0.0);
+    prop_simd.setComputeMode(J2ConstellationPropagator::CPU_SIMD);
     prop_simd.setStepSize(30.0);
     prop_simd.addSatellites(sats);
     prop_simd.propagateConstellation(T);
 
     // CUDA（若可用）
-    bool has_cuda = ConstellationPropagator::isCudaAvailable();
-    ConstellationPropagator prop_cuda(0.0);
+    bool has_cuda = J2ConstellationPropagator::isCudaAvailable();
+    J2ConstellationPropagator prop_cuda(0.0);
     if (has_cuda) {
-        prop_cuda.setComputeMode(ConstellationPropagator::GPU_CUDA);
+        prop_cuda.setComputeMode(J2ConstellationPropagator::GPU_CUDA);
         prop_cuda.setStepSize(30.0);
         prop_cuda.addSatellites(sats);
         prop_cuda.propagateConstellation(T);

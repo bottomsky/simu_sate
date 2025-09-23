@@ -3,7 +3,7 @@ file(GLOB PERFORMANCE_TEST_SOURCES "*.cpp")
 
 # 包含星座传播器相关源文件
 set(CONSTELLATION_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/constellation_propagator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/j2_constellation_propagator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../src/j2_orbit_propagator.cpp
 )
 

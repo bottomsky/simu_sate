@@ -111,9 +111,9 @@ namespace MemoryLayoutTest
             Console.WriteLine("J2Orbit memory layout and roundtrip tests passed.");
         }
 
-        static void TestConstellationPropagator()
+        static void TestJ2ConstellationPropagator()
         {
-            Console.WriteLine("Testing ConstellationPropagator functionality...");
+            Console.WriteLine("Testing J2ConstellationPropagator functionality...");
 
             // 验证新结构体的大小
             AssertSize<CCompactOrbitalElements>(sizeof(double) * 6);
@@ -129,12 +129,12 @@ namespace MemoryLayoutTest
             );
 
             // 检查 CUDA 可用性
-            bool cudaAvailable = ConstellationPropagator.IsCudaAvailable();
+            bool cudaAvailable = J2ConstellationPropagator.IsCudaAvailable();
             Console.WriteLine($"CUDA Available: {cudaAvailable}");
 
             // 创建星座传播器
             var epochTime = 0.0; // J2000.0
-            using var constellation = new ConstellationPropagator(epochTime);
+            using var constellation = new J2ConstellationPropagator(epochTime);
 
             // 添加几个测试卫星
             var satellites = new[]
@@ -224,7 +224,7 @@ namespace MemoryLayoutTest
             constellation.SetAdaptiveParameters(1e-8, 1.0, 60.0);
             Console.WriteLine("Set constellation parameters.");
 
-            Console.WriteLine("ConstellationPropagator tests passed.");
+            Console.WriteLine("J2ConstellationPropagator tests passed.");
         }
 
         static void Main()
@@ -232,7 +232,7 @@ namespace MemoryLayoutTest
             try
             {
                 TestJ2Orbit();
-                TestConstellationPropagator();
+                TestJ2ConstellationPropagator();
                 Console.WriteLine("All tests passed successfully!");
             }
             catch (Exception ex)

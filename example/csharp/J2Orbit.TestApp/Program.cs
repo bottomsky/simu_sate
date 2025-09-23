@@ -29,7 +29,7 @@ namespace J2Orbit.TestApp
                 Console.WriteLine($"[J2Orbit] Roundtrip: a={roundtrip.a:F3}, e={roundtrip.e:E3}, i={roundtrip.i:E3}");
 
                 // Constellation basic test
-                using var constellation = new ConstellationPropagator(0.0);
+                using var constellation = new J2ConstellationPropagator(0.0);
                 constellation.AddSatellite(new CCompactOrbitalElements { a = 7000e3, e = 0.001, i = 98*Math.PI/180.0, O = 0, w = 0, M = 0 });
                 constellation.AddSatellite(new CCompactOrbitalElements { a = 7000e3, e = 0.001, i = 98*Math.PI/180.0, O = 60*Math.PI/180.0, w = 0, M = 0 });
                 Console.WriteLine($"[Constellation] Count before propagate: {constellation.GetSatelliteCount()}");

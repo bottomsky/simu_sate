@@ -49,7 +49,7 @@ def _diff_norm(a, b):
 
 
 def _propagate_constellation_state(j2_lib, initial_elements, step_size, target_time, compute_mode):
-    handle = j2_lib.constellation_propagator_create(ctypes.c_double(initial_elements["t"]))
+    handle = j2_lib.j2_constellation_propagator_create(ctypes.c_double(initial_elements["t"]))
     assert handle, "无法创建星座传播器"
     try:
         elem = CCompactOrbitalElements(
@@ -60,25 +60,25 @@ def _propagate_constellation_state(j2_lib, initial_elements, step_size, target_t
             w=initial_elements["w"],
             M=initial_elements["M"],
         )
-        ret = j2_lib.constellation_propagator_add_satellite(handle, ctypes.byref(elem))
+        ret = j2_lib.j2_constellation_propagator_add_satellite(handle, ctypes.byref(elem))
         assert ret == 0
 
-        ret = j2_lib.constellation_propagator_set_step_size(handle, ctypes.c_double(step_size))
+        ret = j2_lib.j2_constellation_propagator_set_step_size(handle, ctypes.c_double(step_size))
         assert ret == 0
-        ret = j2_lib.constellation_propagator_set_adaptive_step_size(handle, ctypes.c_int(0))
+        ret = j2_lib.j2_constellation_propagator_set_adaptive_step_size(handle, ctypes.c_int(0))
         assert ret == 0
-        ret = j2_lib.constellation_propagator_set_compute_mode(handle, ctypes.c_int(compute_mode))
+        ret = j2_lib.j2_constellation_propagator_set_compute_mode(handle, ctypes.c_int(compute_mode))
         assert ret == 0
 
-        ret = j2_lib.constellation_propagator_propagate(handle, ctypes.c_double(target_time))
+        ret = j2_lib.j2_constellation_propagator_propagate(handle, ctypes.c_double(target_time))
         assert ret == 0
 
         state = CStateVector()
-        ret = j2_lib.constellation_propagator_get_satellite_state(handle, 0, ctypes.byref(state))
+        ret = j2_lib.j2_constellation_propagator_get_satellite_state(handle, 0, ctypes.byref(state))
         assert ret == 0
         return state
     finally:
-        j2_lib.constellation_propagator_destroy(handle)
+        j2_lib.j2_constellation_propagator_destroy(handle)
 
 
 @pytest.mark.parametrize("fraction", [0.25, 0.5, 1.0])
@@ -138,16 +138,16 @@ def test_single_satellite_propagation_accuracy(j2_lib, j2_propagator, initial_el
 def test_impulse_effect_direction(j2_lib, constellation, delta_v, axis):
     # 在当前历元施加脉冲前记录速度分量
     base_state = CStateVector()
-    ret = j2_lib.constellation_propagator_get_satellite_state(constellation, ctypes.c_size_t(0), ctypes.byref(base_state))
+    ret = j2_lib.j2_constellation_propagator_get_satellite_state(constellation, ctypes.c_size_t(0), ctypes.byref(base_state))
     assert ret == 0
     base_component = float(base_state.v[axis])
 
     dv = (ctypes.c_double * 3)(*delta_v)
-    ret = j2_lib.constellation_propagator_apply_impulse_to_constellation(constellation, dv, ctypes.c_size_t(1), ctypes.c_double(0.0))
+    ret = j2_lib.j2_constellation_propagator_apply_impulse_to_constellation(constellation, dv, ctypes.c_size_t(1), ctypes.c_double(0.0))
     assert ret == 0
 
     state = CStateVector()
-    ret = j2_lib.constellation_propagator_get_satellite_state(constellation, ctypes.c_size_t(0), ctypes.byref(state))
+    ret = j2_lib.j2_constellation_propagator_get_satellite_state(constellation, ctypes.c_size_t(0), ctypes.byref(state))
     assert ret == 0
 
     # 对应轴速度增量应与给定脉冲方向一致
@@ -179,7 +179,7 @@ def test_constellation_compute_modes_accuracy(j2_lib, initial_elements, step_siz
     ref_vel_norm = _norm3(ref_vel)
 
     modes = [("CPU_SCALAR", 0), ("CPU_SIMD", 1)]
-    if bool(j2_lib.constellation_propagator_is_cuda_available()):
+    if bool(j2_lib.j2_constellation_propagator_is_cuda_available()):
         modes.append(("GPU_CUDA", 2))
 
     states = {}

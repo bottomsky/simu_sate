@@ -40,7 +40,7 @@ RUN echo "=== Verifying source structure ===" && \
     echo "CMakeLists.txt exists:" && ls -la CMakeLists.txt && \
     echo "Include directory:" && ls -la include/ && \
     echo "Source directory:" && ls -la src/ && \
-    echo "Header file check:" && ls -la include/constellation_propagator_c.h
+    echo "Header file check:" && ls -la include/j2_constellation_propagator_c.h
 
 # 验证编译环境
 RUN echo "=== Verifying build environment ===" && \

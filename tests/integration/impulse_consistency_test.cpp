@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "constellation_propagator.h"
+#include "j2_constellation_propagator.h"
 #include <cstdlib>
 #include <string>
 
@@ -49,14 +49,14 @@ TEST_F(ImpulseConsistencyTest, ScalarVsSIMD_ImpulseAtT0) {
     }
 
     // SCALAR
-    ConstellationPropagator prop_scalar(0.0);
-    prop_scalar.setComputeMode(ConstellationPropagator::CPU_SCALAR);
+    J2ConstellationPropagator prop_scalar(0.0);
+    prop_scalar.setComputeMode(J2ConstellationPropagator::CPU_SCALAR);
     prop_scalar.addSatellites(sats);
     prop_scalar.applyImpulseToConstellation(dvs, 0.0);
 
     // SIMD
-    ConstellationPropagator prop_simd(0.0);
-    prop_simd.setComputeMode(ConstellationPropagator::CPU_SIMD);
+    J2ConstellationPropagator prop_simd(0.0);
+    prop_simd.setComputeMode(J2ConstellationPropagator::CPU_SIMD);
     prop_simd.addSatellites(sats);
     prop_simd.applyImpulseToConstellation(dvs, 0.0);
 
@@ -73,7 +73,7 @@ TEST_F(ImpulseConsistencyTest, ScalarVsSIMD_ImpulseAtT0) {
 
 TEST_F(ImpulseConsistencyTest, ScalarVsCUDA_ImpulseAtT0) {
 #if HAVE_CUDA_TOOLKIT
-    if (!ConstellationPropagator::isCudaAvailable()) {
+    if (!J2ConstellationPropagator::isCudaAvailable()) {
         GTEST_SKIP() << "[GPU CUDA] CUDA运行时不可用，跳过测试";
     }
 #else
@@ -90,14 +90,14 @@ TEST_F(ImpulseConsistencyTest, ScalarVsCUDA_ImpulseAtT0) {
     }
 
     // SCALAR
-    ConstellationPropagator prop_scalar(0.0);
-    prop_scalar.setComputeMode(ConstellationPropagator::CPU_SCALAR);
+    J2ConstellationPropagator prop_scalar(0.0);
+    prop_scalar.setComputeMode(J2ConstellationPropagator::CPU_SCALAR);
     prop_scalar.addSatellites(sats);
     prop_scalar.applyImpulseToConstellation(dvs, 0.0);
 
     // CUDA
-    ConstellationPropagator prop_cuda(0.0);
-    prop_cuda.setComputeMode(ConstellationPropagator::GPU_CUDA);
+    J2ConstellationPropagator prop_cuda(0.0);
+    prop_cuda.setComputeMode(J2ConstellationPropagator::GPU_CUDA);
     prop_cuda.addSatellites(sats);
     prop_cuda.applyImpulseToConstellation(dvs, 0.0);
 

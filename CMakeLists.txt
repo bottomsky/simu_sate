@@ -83,8 +83,8 @@ include_directories(
 set(SOURCES
     src/j2_orbit_propagator.cpp
     src/j2_orbit_propagator_c.cpp
-    src/constellation_propagator.cpp
-    src/constellation_propagator_c.cpp
+    src/j2_constellation_propagator.cpp
+    src/j2_constellation_propagator_c.cpp
 )
 
 if(CMAKE_CUDA_COMPILER)
@@ -95,8 +95,8 @@ endif()
 set(HEADERS
     include/j2_orbit_propagator.h
     include/j2_orbit_propagator_c.h
-    include/constellation_propagator.h
-    include/constellation_propagator_c.h
+    include/j2_constellation_propagator.h
+    include/j2_constellation_propagator_c.h
     include/common_types.h
     include/math_defs.h
 )

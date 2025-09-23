@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "constellation_propagator.h"
+#include "j2_constellation_propagator.h"
 #include <cstdlib>
 #include <string>
 
@@ -31,7 +31,7 @@ protected:
 // 测试 SCALAR vs CUDA 模式一致性（CUDA 可用时运行，否则跳过）
 TEST_F(CUDAConsistencyTest, ScalarVsCUDAConsistency) {
 #if HAVE_CUDA_TOOLKIT
-    if (!ConstellationPropagator::isCudaAvailable()) {
+    if (!J2ConstellationPropagator::isCudaAvailable()) {
         GTEST_SKIP() << "[GPU CUDA] CUDA运行时不可用，跳过测试";
     }
 #else
@@ -41,15 +41,15 @@ TEST_F(CUDAConsistencyTest, ScalarVsCUDAConsistency) {
     double propagation_time = 3600.0; // 1小时
 
     // CPU_SCALAR模式
-    ConstellationPropagator prop_scalar(0.0);
-    prop_scalar.setComputeMode(ConstellationPropagator::CPU_SCALAR);
+    J2ConstellationPropagator prop_scalar(0.0);
+    prop_scalar.setComputeMode(J2ConstellationPropagator::CPU_SCALAR);
     prop_scalar.addSatellite(elements_);
     prop_scalar.propagateConstellation(propagation_time);
     StateVector state_scalar = prop_scalar.getSatelliteState(0);
 
     // GPU_CUDA模式
-    ConstellationPropagator prop_cuda(0.0);
-    prop_cuda.setComputeMode(ConstellationPropagator::GPU_CUDA);
+    J2ConstellationPropagator prop_cuda(0.0);
+    prop_cuda.setComputeMode(J2ConstellationPropagator::GPU_CUDA);
     prop_cuda.addSatellite(elements_);
     prop_cuda.propagateConstellation(propagation_time);
     StateVector state_cuda = prop_cuda.getSatelliteState(0);
@@ -75,7 +75,7 @@ TEST_F(CUDAConsistencyTest, ScalarVsCUDAConsistency) {
 // 测试多卫星场景 SCALAR vs CUDA 一致性（CUDA 可用时运行，否则跳过）
 TEST_F(CUDAConsistencyTest, MultiSatelliteConsistency) {
 #if HAVE_CUDA_TOOLKIT
-    if (!ConstellationPropagator::isCudaAvailable()) {
+    if (!J2ConstellationPropagator::isCudaAvailable()) {
         GTEST_SKIP() << "[GPU CUDA] CUDA运行时不可用，跳过测试";
     }
 #else
@@ -94,14 +94,14 @@ TEST_F(CUDAConsistencyTest, MultiSatelliteConsistency) {
     }
 
     // SCALAR模式
-    ConstellationPropagator prop_scalar(0.0);
-    prop_scalar.setComputeMode(ConstellationPropagator::CPU_SCALAR);
+    J2ConstellationPropagator prop_scalar(0.0);
+    prop_scalar.setComputeMode(J2ConstellationPropagator::CPU_SCALAR);
     for (const auto& elem : test_elements) prop_scalar.addSatellite(elem);
     prop_scalar.propagateConstellation(propagation_time);
 
     // CUDA模式
-    ConstellationPropagator prop_cuda(0.0);
-    prop_cuda.setComputeMode(ConstellationPropagator::GPU_CUDA);
+    J2ConstellationPropagator prop_cuda(0.0);
+    prop_cuda.setComputeMode(J2ConstellationPropagator::GPU_CUDA);
     for (const auto& elem : test_elements) prop_cuda.addSatellite(elem);
     prop_cuda.propagateConstellation(propagation_time);
 

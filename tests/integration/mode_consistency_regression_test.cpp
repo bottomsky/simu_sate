@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <numeric>
 #include <iostream>
-#include "constellation_propagator.h"
+#include "j2_constellation_propagator.h"
 
 // 统计结果结构
 struct ComparisonStats {
@@ -45,9 +45,9 @@ protected:
 
     // 在指定模式下进行传播，并返回所有卫星的位置矩阵（3xN）及单星状态便于比较
     std::vector<StateVector> propagateInMode(const std::vector<CompactOrbitalElements>& sats,
-                                             ConstellationPropagator::ComputeMode mode,
+                                             J2ConstellationPropagator::ComputeMode mode,
                                              double step, double target_time) const {
-        ConstellationPropagator prop(0.0);
+        J2ConstellationPropagator prop(0.0);
         prop.setComputeMode(mode);
         prop.setStepSize(step);
         prop.addSatellites(sats);
@@ -194,12 +194,12 @@ TEST_F(ModeConsistencyRegressionTest, SmallConstellation_Step60s_OneHour) {
     const double t = 3600.0;  // 1 hour
 
     // 依次拿三个模式跑
-    auto states_scalar = propagateInMode(sats, ConstellationPropagator::CPU_SCALAR, step, t);
-    auto states_simd   = propagateInMode(sats, ConstellationPropagator::CPU_SIMD,   step, t);
+    auto states_scalar = propagateInMode(sats, J2ConstellationPropagator::CPU_SCALAR, step, t);
+    auto states_simd   = propagateInMode(sats, J2ConstellationPropagator::CPU_SIMD,   step, t);
     std::vector<StateVector> states_cuda;
-    bool has_cuda = ConstellationPropagator::isCudaAvailable();
+    bool has_cuda = J2ConstellationPropagator::isCudaAvailable();
     if (has_cuda) {
-        states_cuda = propagateInMode(sats, ConstellationPropagator::GPU_CUDA, step, t);
+        states_cuda = propagateInMode(sats, J2ConstellationPropagator::GPU_CUDA, step, t);
     }
 
     // 计算统计数据
@@ -240,11 +240,11 @@ TEST_F(ModeConsistencyRegressionTest, MediumConstellation_Step30s_TwoHours_Adapt
     const double step = 30.0; // s
     const double t = 7200.0;  // 2 hours
 
-    auto states_scalar = propagateInMode(sats, ConstellationPropagator::CPU_SCALAR, step, t);
-    auto states_simd   = propagateInMode(sats, ConstellationPropagator::CPU_SIMD,   step, t);
+    auto states_scalar = propagateInMode(sats, J2ConstellationPropagator::CPU_SCALAR, step, t);
+    auto states_simd   = propagateInMode(sats, J2ConstellationPropagator::CPU_SIMD,   step, t);
     std::vector<StateVector> states_cuda;
-    bool has_cuda = ConstellationPropagator::isCudaAvailable();
-    if (has_cuda) states_cuda = propagateInMode(sats, ConstellationPropagator::GPU_CUDA, step, t);
+    bool has_cuda = J2ConstellationPropagator::isCudaAvailable();
+    if (has_cuda) states_cuda = propagateInMode(sats, J2ConstellationPropagator::GPU_CUDA, step, t);
 
     // 计算统计数据
     ComparisonStats scalar_vs_simd = computeStats(states_scalar, states_simd);
@@ -286,8 +286,8 @@ TEST_F(ModeConsistencyRegressionTest, AdaptiveStep_ScalarVsSIMD) {
 
     // SCALAR 自适应（收紧容差和步长范围）
     {
-        ConstellationPropagator prop(0.0);
-        prop.setComputeMode(ConstellationPropagator::CPU_SCALAR);
+        J2ConstellationPropagator prop(0.0);
+        prop.setComputeMode(J2ConstellationPropagator::CPU_SCALAR);
         prop.setAdaptiveStepSize(true);
         prop.setAdaptiveParameters(1e-8, 0.5, 60.0);
         prop.addSatellites(sats);
@@ -298,8 +298,8 @@ TEST_F(ModeConsistencyRegressionTest, AdaptiveStep_ScalarVsSIMD) {
 
     // SIMD 自适应（同样参数）
     {
-        ConstellationPropagator prop(0.0);
-        prop.setComputeMode(ConstellationPropagator::CPU_SIMD);
+        J2ConstellationPropagator prop(0.0);
+        prop.setComputeMode(J2ConstellationPropagator::CPU_SIMD);
         prop.setAdaptiveStepSize(true);
         prop.setAdaptiveParameters(1e-8, 0.5, 60.0);
         prop.addSatellites(sats);

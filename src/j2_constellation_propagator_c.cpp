@@ -1,40 +1,40 @@
 /**
- * @file constellation_propagator_c.cpp
+ * @file j2_constellation_propagator_c.cpp
  * @brief 星座传播器的C语言封装实现
  */
 
-#include "constellation_propagator_c.h"
-#include "constellation_propagator.h"
+#include "j2_constellation_propagator_c.h"
+#include "j2_constellation_propagator.h"
 #include <vector>
 #include <cstring>
 #include <stdexcept>
 
 // 内部辅助：验证句柄
-static ConstellationPropagator* validate_handle(ConstellationPropagatorHandle handle) {
+static J2ConstellationPropagator* validate_handle(J2ConstellationPropagatorHandle handle) {
     if (handle == nullptr) return nullptr;
-    return static_cast<ConstellationPropagator*>(handle);
+    return static_cast<J2ConstellationPropagator*>(handle);
 }
 
 extern "C" {
 
-J2_API ConstellationPropagatorHandle constellation_propagator_create(double epoch_time) {
+J2_API J2ConstellationPropagatorHandle j2_constellation_propagator_create(double epoch_time) {
     try {
-        ConstellationPropagator* ptr = new ConstellationPropagator(epoch_time);
-        return static_cast<ConstellationPropagatorHandle>(ptr);
+        J2ConstellationPropagator* ptr = new J2ConstellationPropagator(epoch_time);
+        return static_cast<J2ConstellationPropagatorHandle>(ptr);
     } catch (const std::exception&) {
         return nullptr;
     }
 }
 
-J2_API void constellation_propagator_destroy(ConstellationPropagatorHandle handle) {
-    ConstellationPropagator* p = validate_handle(handle);
+J2_API void j2_constellation_propagator_destroy(J2ConstellationPropagatorHandle handle) {
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (p) delete p;
 }
 
-J2_API int constellation_propagator_add_satellites(ConstellationPropagatorHandle handle,
+J2_API int j2_constellation_propagator_add_satellites(J2ConstellationPropagatorHandle handle,
                                                   const CCompactOrbitalElements* satellites,
                                                   size_t count) {
-    ConstellationPropagator* p = validate_handle(handle);
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p || (!satellites && count>0)) return -1;
     try {
         std::vector<CompactOrbitalElements> vec;
@@ -50,9 +50,9 @@ J2_API int constellation_propagator_add_satellites(ConstellationPropagatorHandle
     }
 }
 
-J2_API int constellation_propagator_add_satellite(ConstellationPropagatorHandle handle,
+J2_API int j2_constellation_propagator_add_satellite(J2ConstellationPropagatorHandle handle,
                                                  const CCompactOrbitalElements* satellite) {
-    ConstellationPropagator* p = validate_handle(handle);
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p || !satellite) return -1;
     try {
         CompactOrbitalElements e{satellite->a, satellite->e, satellite->i, satellite->O, satellite->w, satellite->M};
@@ -63,9 +63,9 @@ J2_API int constellation_propagator_add_satellite(ConstellationPropagatorHandle 
     }
 }
 
-J2_API int constellation_propagator_get_satellite_count(ConstellationPropagatorHandle handle,
+J2_API int j2_constellation_propagator_get_satellite_count(J2ConstellationPropagatorHandle handle,
                                                        size_t* count) {
-    ConstellationPropagator* p = validate_handle(handle);
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p || !count) return -1;
     try {
         *count = p->getSatelliteCount();
@@ -73,17 +73,17 @@ J2_API int constellation_propagator_get_satellite_count(ConstellationPropagatorH
     } catch (const std::exception&) { return -1; }
 }
 
-J2_API int constellation_propagator_propagate(ConstellationPropagatorHandle handle, double target_time) {
-    ConstellationPropagator* p = validate_handle(handle);
+J2_API int j2_constellation_propagator_propagate(J2ConstellationPropagatorHandle handle, double target_time) {
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p) return -1;
     try { p->propagateConstellation(target_time); return 0; }
     catch (const std::exception&) { return -1; }
 }
 
-J2_API int constellation_propagator_get_satellite_elements(ConstellationPropagatorHandle handle,
+J2_API int j2_constellation_propagator_get_satellite_elements(J2ConstellationPropagatorHandle handle,
                                                           size_t satellite_id,
                                                           CCompactOrbitalElements* elements) {
-    ConstellationPropagator* p = validate_handle(handle);
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p || !elements) return -1;
     try {
         auto e = p->getSatelliteElements(satellite_id);
@@ -92,10 +92,10 @@ J2_API int constellation_propagator_get_satellite_elements(ConstellationPropagat
     } catch (const std::exception&) { return -1; }
 }
 
-J2_API int constellation_propagator_get_satellite_state(ConstellationPropagatorHandle handle,
+J2_API int j2_constellation_propagator_get_satellite_state(J2ConstellationPropagatorHandle handle,
                                                        size_t satellite_id,
                                                        CStateVector* state) {
-    ConstellationPropagator* p = validate_handle(handle);
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p || !state) return -1;
     try {
         auto s = p->getSatelliteState(satellite_id);
@@ -105,10 +105,10 @@ J2_API int constellation_propagator_get_satellite_state(ConstellationPropagatorH
     } catch (const std::exception&) { return -1; }
 }
 
-J2_API int constellation_propagator_get_all_positions(ConstellationPropagatorHandle handle,
+J2_API int j2_constellation_propagator_get_all_positions(J2ConstellationPropagatorHandle handle,
                                                      double* positions,
                                                      size_t* count) {
-    ConstellationPropagator* p = validate_handle(handle);
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p || !positions || !count) return -1;
     try {
         size_t n = p->getSatelliteCount();
@@ -125,11 +125,11 @@ J2_API int constellation_propagator_get_all_positions(ConstellationPropagatorHan
     } catch (const std::exception&) { return -1; }
 }
 
-J2_API int constellation_propagator_apply_impulse_to_constellation(ConstellationPropagatorHandle handle,
+J2_API int j2_constellation_propagator_apply_impulse_to_constellation(J2ConstellationPropagatorHandle handle,
                                                                   const double* delta_vs,
                                                                   size_t count,
                                                                   double impulse_time) {
-    ConstellationPropagator* p = validate_handle(handle);
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p || (!delta_vs && count>0)) return -1;
     try {
         std::vector<Eigen::Vector3d> dvs;
@@ -142,12 +142,12 @@ J2_API int constellation_propagator_apply_impulse_to_constellation(Constellation
     } catch (const std::exception&) { return -1; }
 }
 
-J2_API int constellation_propagator_apply_impulse_to_satellites(ConstellationPropagatorHandle handle,
+J2_API int j2_constellation_propagator_apply_impulse_to_satellites(J2ConstellationPropagatorHandle handle,
                                                                const size_t* satellite_ids,
                                                                const double* delta_vs,
                                                                size_t count,
                                                                double impulse_time) {
-    ConstellationPropagator* p = validate_handle(handle);
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p || (!satellite_ids && count>0) || (!delta_vs && count>0)) return -1;
     try {
         std::vector<size_t> ids(satellite_ids, satellite_ids+count);
@@ -160,43 +160,43 @@ J2_API int constellation_propagator_apply_impulse_to_satellites(ConstellationPro
     } catch (const std::exception&) { return -1; }
 }
 
-J2_API int constellation_propagator_set_step_size(ConstellationPropagatorHandle handle, double step_size) {
-    ConstellationPropagator* p = validate_handle(handle);
+J2_API int j2_constellation_propagator_set_step_size(J2ConstellationPropagatorHandle handle, double step_size) {
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p || step_size<=0) return -1;
     try { p->setStepSize(step_size); return 0; } catch (const std::exception&) { return -1; }
 }
 
-J2_API int constellation_propagator_set_compute_mode(ConstellationPropagatorHandle handle, ComputeMode mode) {
-    ConstellationPropagator* p = validate_handle(handle);
+J2_API int j2_constellation_propagator_set_compute_mode(J2ConstellationPropagatorHandle handle, J2ConstellationComputeMode mode) {
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p) return -1;
     try {
         switch (mode) {
-            case COMPUTE_MODE_CPU_SCALAR: p->setComputeMode(ConstellationPropagator::CPU_SCALAR); break;
-            case COMPUTE_MODE_CPU_SIMD:   p->setComputeMode(ConstellationPropagator::CPU_SIMD);   break;
-            case COMPUTE_MODE_GPU_CUDA:   p->setComputeMode(ConstellationPropagator::GPU_CUDA);   break;
+            case J2_CONSTELLATION_COMPUTE_MODE_CPU_SCALAR: p->setComputeMode(J2ConstellationPropagator::CPU_SCALAR); break;
+            case J2_CONSTELLATION_COMPUTE_MODE_CPU_SIMD:   p->setComputeMode(J2ConstellationPropagator::CPU_SIMD);   break;
+            case J2_CONSTELLATION_COMPUTE_MODE_GPU_CUDA:   p->setComputeMode(J2ConstellationPropagator::GPU_CUDA);   break;
             default: return -1;
         }
         return 0;
     } catch (const std::exception&) { return -1; }
 }
 
-J2_API int constellation_propagator_set_adaptive_step_size(ConstellationPropagatorHandle handle, int enable) {
-    ConstellationPropagator* p = validate_handle(handle);
+J2_API int j2_constellation_propagator_set_adaptive_step_size(J2ConstellationPropagatorHandle handle, int enable) {
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p) return -1;
     try { p->setAdaptiveStepSize(enable!=0); return 0; } catch (const std::exception&) { return -1; }
 }
 
-J2_API int constellation_propagator_set_adaptive_parameters(ConstellationPropagatorHandle handle,
+J2_API int j2_constellation_propagator_set_adaptive_parameters(J2ConstellationPropagatorHandle handle,
                                                            double tolerance,
                                                            double min_step,
                                                            double max_step) {
-    ConstellationPropagator* p = validate_handle(handle);
+    J2ConstellationPropagator* p = validate_handle(handle);
     if (!p || tolerance<=0 || min_step<=0 || max_step<=min_step) return -1;
     try { p->setAdaptiveParameters(tolerance, min_step, max_step); return 0; } catch (const std::exception&) { return -1; }
 }
 
-J2_API int constellation_propagator_is_cuda_available(void) {
-    try { return ConstellationPropagator::isCudaAvailable() ? 1 : 0; }
+J2_API int j2_constellation_propagator_is_cuda_available(void) {
+    try { return J2ConstellationPropagator::isCudaAvailable() ? 1 : 0; }
     catch (...) { return 0; }
 }
 

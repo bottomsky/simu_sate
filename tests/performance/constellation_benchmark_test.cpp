@@ -3,7 +3,7 @@
 #include <iostream>
 #include <vector>
 #include <iomanip>
-#include "constellation_propagator.h"
+#include "j2_constellation_propagator.h"
 
 class ConstellationBenchmarkTest : public ::testing::Test {
 protected:
@@ -45,11 +45,11 @@ protected:
     
     // 执行性能基准测试
     double runBenchmark(size_t satellite_count, 
-                       ConstellationPropagator::ComputeMode mode,
+                       J2ConstellationPropagator::ComputeMode mode,
                        const std::string& mode_name) {
         
         auto constellation = generateConstellation(satellite_count);
-        ConstellationPropagator propagator(0.0);
+        J2ConstellationPropagator propagator(0.0);
         
         // 设置计算模式和参数
         propagator.setComputeMode(mode);
@@ -101,19 +101,19 @@ TEST_F(ConstellationBenchmarkTest, Satellites200_Performance) {
     
     // CPU标量模式
     double scalar_time = runBenchmark(satellite_count, 
-                                     ConstellationPropagator::CPU_SCALAR, 
+                                     J2ConstellationPropagator::CPU_SCALAR, 
                                      "CPU标量");
     
     // CPU SIMD模式  
     double simd_time = runBenchmark(satellite_count,
-                                   ConstellationPropagator::CPU_SIMD,
+                                   J2ConstellationPropagator::CPU_SIMD,
                                    "CPU SIMD");
     
     // GPU CUDA模式 (如果可用)
     double cuda_time = 0.0;
-    if (ConstellationPropagator::isCudaAvailable()) {
+    if (J2ConstellationPropagator::isCudaAvailable()) {
         cuda_time = runBenchmark(satellite_count,
-                                ConstellationPropagator::GPU_CUDA,
+                                J2ConstellationPropagator::GPU_CUDA,
                                 "GPU CUDA");
     } else {
         std::cout << "\n[GPU CUDA] CUDA不可用，跳过测试\n";
@@ -142,19 +142,19 @@ TEST_F(ConstellationBenchmarkTest, Satellites1000_Performance) {
     
     // CPU标量模式
     double scalar_time = runBenchmark(satellite_count, 
-                                     ConstellationPropagator::CPU_SCALAR, 
+                                     J2ConstellationPropagator::CPU_SCALAR, 
                                      "CPU标量");
     
     // CPU SIMD模式  
     double simd_time = runBenchmark(satellite_count,
-                                   ConstellationPropagator::CPU_SIMD,
+                                   J2ConstellationPropagator::CPU_SIMD,
                                    "CPU SIMD");
     
     // GPU CUDA模式 (如果可用)
     double cuda_time = 0.0;
-    if (ConstellationPropagator::isCudaAvailable()) {
+    if (J2ConstellationPropagator::isCudaAvailable()) {
         cuda_time = runBenchmark(satellite_count,
-                                ConstellationPropagator::GPU_CUDA,
+                                J2ConstellationPropagator::GPU_CUDA,
                                 "GPU CUDA");
     } else {
         std::cout << "\n[GPU CUDA] CUDA不可用，跳过测试\n";
@@ -183,19 +183,19 @@ TEST_F(ConstellationBenchmarkTest, Satellites5000_Performance) {
     
     // CPU标量模式
     double scalar_time = runBenchmark(satellite_count, 
-                                     ConstellationPropagator::CPU_SCALAR, 
+                                     J2ConstellationPropagator::CPU_SCALAR, 
                                      "CPU标量");
     
     // CPU SIMD模式  
     double simd_time = runBenchmark(satellite_count,
-                                   ConstellationPropagator::CPU_SIMD,
+                                   J2ConstellationPropagator::CPU_SIMD,
                                    "CPU SIMD");
     
     // GPU CUDA模式 (如果可用)
     double cuda_time = 0.0;
-    if (ConstellationPropagator::isCudaAvailable()) {
+    if (J2ConstellationPropagator::isCudaAvailable()) {
         cuda_time = runBenchmark(satellite_count,
-                                ConstellationPropagator::GPU_CUDA,
+                                J2ConstellationPropagator::GPU_CUDA,
                                 "GPU CUDA");
     } else {
         std::cout << "\n[GPU CUDA] CUDA不可用，跳过测试\n";
@@ -223,17 +223,17 @@ TEST_F(ConstellationBenchmarkTest, Satellites10000_Performance) {
     std::cout << "\n=== 10000卫星性能基准测试 ===";
 
     double scalar_time = runBenchmark(satellite_count,
-                                     ConstellationPropagator::CPU_SCALAR,
+                                     J2ConstellationPropagator::CPU_SCALAR,
                                      "CPU标量");
 
     double simd_time = runBenchmark(satellite_count,
-                                   ConstellationPropagator::CPU_SIMD,
+                                   J2ConstellationPropagator::CPU_SIMD,
                                    "CPU SIMD");
 
     double cuda_time = 0.0;
-    if (ConstellationPropagator::isCudaAvailable()) {
+    if (J2ConstellationPropagator::isCudaAvailable()) {
         cuda_time = runBenchmark(satellite_count,
-                                ConstellationPropagator::GPU_CUDA,
+                                J2ConstellationPropagator::GPU_CUDA,
                                 "GPU CUDA");
     } else {
         std::cout << "\n[GPU CUDA] CUDA不可用，跳过测试\n";
@@ -259,17 +259,17 @@ TEST_F(ConstellationBenchmarkTest, Satellites20000_Performance) {
     std::cout << "\n=== 20000卫星性能基准测试 ===";
 
     double scalar_time = runBenchmark(satellite_count,
-                                     ConstellationPropagator::CPU_SCALAR,
+                                     J2ConstellationPropagator::CPU_SCALAR,
                                      "CPU标量");
 
     double simd_time = runBenchmark(satellite_count,
-                                   ConstellationPropagator::CPU_SIMD,
+                                   J2ConstellationPropagator::CPU_SIMD,
                                    "CPU SIMD");
 
     double cuda_time = 0.0;
-    if (ConstellationPropagator::isCudaAvailable()) {
+    if (J2ConstellationPropagator::isCudaAvailable()) {
         cuda_time = runBenchmark(satellite_count,
-                                ConstellationPropagator::GPU_CUDA,
+                                J2ConstellationPropagator::GPU_CUDA,
                                 "GPU CUDA");
     } else {
         std::cout << "\n[GPU CUDA] CUDA不可用，跳过测试\n";
@@ -304,13 +304,13 @@ TEST_F(ConstellationBenchmarkTest, Scalability_Analysis) {
         
         // 短时间测试以快速评估可扩展性
         int short_frames = 100;  // 减少帧数以加快测试
-        ConstellationPropagator prop_scalar(0.0), prop_simd(0.0), prop_cuda(0.0);
+        J2ConstellationPropagator prop_scalar(0.0), prop_simd(0.0), prop_cuda(0.0);
         
-        prop_scalar.setComputeMode(ConstellationPropagator::CPU_SCALAR);
+        prop_scalar.setComputeMode(J2ConstellationPropagator::CPU_SCALAR);
         prop_scalar.setStepSize(step_size_);
         prop_scalar.addSatellites(constellation);
         
-        prop_simd.setComputeMode(ConstellationPropagator::CPU_SIMD);
+        prop_simd.setComputeMode(J2ConstellationPropagator::CPU_SIMD);
         prop_simd.setStepSize(step_size_);
         prop_simd.addSatellites(constellation);
         
@@ -334,9 +334,9 @@ TEST_F(ConstellationBenchmarkTest, Scalability_Analysis) {
         
         // 测量GPU CUDA性能（如可用）
         double cuda_time = -1.0;
-        if (ConstellationPropagator::isCudaAvailable()) {
-            ConstellationPropagator prop_cuda_run(0.0);
-            prop_cuda_run.setComputeMode(ConstellationPropagator::GPU_CUDA);
+        if (J2ConstellationPropagator::isCudaAvailable()) {
+            J2ConstellationPropagator prop_cuda_run(0.0);
+            prop_cuda_run.setComputeMode(J2ConstellationPropagator::GPU_CUDA);
             prop_cuda_run.setStepSize(step_size_);
             prop_cuda_run.addSatellites(constellation);
             

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "j2_orbit_propagator.h"
-#include "constellation_propagator.h"
+#include "j2_constellation_propagator.h"
 #include "math_defs.h"
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -172,11 +172,11 @@ std::vector<CompactOrbitalElements> createTestConstellation() {
     };
 }
 
-std::vector<CompactOrbitalElements> propagateWithMode(ConstellationPropagator::ComputeMode mode,
+std::vector<CompactOrbitalElements> propagateWithMode(J2ConstellationPropagator::ComputeMode mode,
                                                       double step_size,
                                                       double duration,
                                                       const std::vector<CompactOrbitalElements>& initial) {
-    ConstellationPropagator propagator(0.0);
+    J2ConstellationPropagator propagator(0.0);
     propagator.setComputeMode(mode);
     propagator.setStepSize(step_size);
     propagator.addSatellites(initial);
@@ -217,7 +217,7 @@ TEST(ConstellationPropagationConsistency, ModesAgreeAcrossStepsAndDurations) {
     const double angular_tol = 1e-8;
     const double mean_anomaly_tol = 1e-8;
 
-    const bool cuda_available = ConstellationPropagator::isCudaAvailable();
+    const bool cuda_available = J2ConstellationPropagator::isCudaAvailable();
 
     for (const auto& scenario : scenarios) {
         const double step_size = scenario.first;
@@ -225,18 +225,18 @@ TEST(ConstellationPropagationConsistency, ModesAgreeAcrossStepsAndDurations) {
 
         SCOPED_TRACE(testing::Message() << "step=" << step_size << ", duration=" << duration);
 
-        const auto scalar_results = propagateWithMode(ConstellationPropagator::CPU_SCALAR,
+        const auto scalar_results = propagateWithMode(J2ConstellationPropagator::CPU_SCALAR,
                                                       step_size,
                                                       duration,
                                                       initial_elements);
-        const auto simd_results = propagateWithMode(ConstellationPropagator::CPU_SIMD,
+        const auto simd_results = propagateWithMode(J2ConstellationPropagator::CPU_SIMD,
                                                     step_size,
                                                     duration,
                                                     initial_elements);
 
         std::vector<CompactOrbitalElements> cuda_results;
         if (cuda_available) {
-            cuda_results = propagateWithMode(ConstellationPropagator::GPU_CUDA,
+            cuda_results = propagateWithMode(J2ConstellationPropagator::GPU_CUDA,
                                              step_size,
                                              duration,
                                              initial_elements);

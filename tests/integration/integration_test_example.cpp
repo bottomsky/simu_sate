@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "j2_orbit_propagator.h"
-#include "constellation_propagator.h"
+#include "j2_constellation_propagator.h"
 #include "math_defs.h"
 
 // 集成测试：验证 J2 轨道传播器与星座传播器之间的一致性
@@ -44,7 +44,7 @@ TEST_F(IntegrationTest, SingleVsConstellationConsistency) {
     auto singleState = singlePropagator.elementsToState(singleElements);
     
     // 使用星座传播器（单颗卫星）
-    ConstellationPropagator constellationPropagator;
+    J2ConstellationPropagator constellationPropagator;
     constellationPropagator.setStepSize(stepSize);
     CompactOrbitalElements compactElements = {a, e, i, Omega, omega, M};
     constellationPropagator.addSatellite(compactElements);
@@ -63,7 +63,7 @@ TEST_F(IntegrationTest, SingleVsConstellationConsistency) {
 }
 
 TEST_F(IntegrationTest, MultipleOrbitalPropagation) {
-    ConstellationPropagator propagator;
+    J2ConstellationPropagator propagator;
     propagator.setStepSize(stepSize);
     
     // 添加3颗不同轨道的卫星
@@ -90,7 +90,7 @@ TEST_F(IntegrationTest, MultipleOrbitalPropagation) {
 }
 
 TEST_F(IntegrationTest, LargeTimeStepPropagation) {
-    ConstellationPropagator propagator;
+    J2ConstellationPropagator propagator;
     propagator.setStepSize(3600.0);  // 1小时步长
     CompactOrbitalElements geoSat = {a, e, i, Omega, omega, M};
     propagator.addSatellite(geoSat);

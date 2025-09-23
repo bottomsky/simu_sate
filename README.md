@@ -26,11 +26,11 @@ j2-perturbation-orbit-propagator/
 ├── build/                      # Build output directory
 ├── include/                    # Header files
 │   ├── j2_orbit_propagator.h      # Single satellite propagator
-│   ├── constellation_propagator.h  # Large-scale constellation propagator
+│   ├── j2_constellation_propagator.h  # Large-scale constellation propagator
 │   └── j2_cuda_kernels.h          # CUDA kernel declarations
 ├── src/                        # Source files
 │   ├── j2_orbit_propagator.cpp     # Original implementation
-│   ├── constellation_propagator.cpp # Optimized constellation implementation
+│   ├── j2_constellation_propagator.cpp # Optimized constellation implementation
 │   ├── constellation_demo.cpp      # Performance testing and demonstration
 │   └── j2_cuda_kernels.cu          # CUDA GPU acceleration kernels
 ├── tests/                      # Test suite

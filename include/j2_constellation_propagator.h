@@ -1,5 +1,5 @@
-#ifndef CONSTELLATION_PROPAGATOR_H
-#define CONSTELLATION_PROPAGATOR_H
+#ifndef J2_CONSTELLATION_PROPAGATOR_H
+#define J2_CONSTELLATION_PROPAGATOR_H
 
 #include <Eigen/Dense>
 #include <vector>
@@ -45,13 +45,13 @@ struct SIMDOrbitalElements {
 };
 
 // 大规模星座外推器
-class ConstellationPropagator {
+class J2ConstellationPropagator {
 public:
     // 构造函数
-    ConstellationPropagator(double epoch_time = 0.0);
+    J2ConstellationPropagator(double epoch_time = 0.0);
     
     // 析构函数
-    ~ConstellationPropagator();
+    ~J2ConstellationPropagator();
     
     // 批量添加卫星
     void addSatellites(const std::vector<CompactOrbitalElements>& satellites);
@@ -209,4 +209,4 @@ extern "C" {
                                           size_t num_satellites, void* stream);
 }
 
-#endif // CONSTELLATION_PROPAGATOR_H
+#endif // J2_J2_CONSTELLATION_PROPAGATOR_H

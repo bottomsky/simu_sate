@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "constellation_propagator.h"
+#include "j2_constellation_propagator.h"
 
 class SIMDConsistencyTest : public ::testing::Test {
 protected:
@@ -21,15 +21,15 @@ TEST_F(SIMDConsistencyTest, ScalarVsSIMDConsistency) {
     double propagation_time = 3600.0; // 1小时
     
     // CPU_SCALAR模式
-    ConstellationPropagator prop_scalar(0.0);
-    prop_scalar.setComputeMode(ConstellationPropagator::CPU_SCALAR);
+    J2ConstellationPropagator prop_scalar(0.0);
+    prop_scalar.setComputeMode(J2ConstellationPropagator::CPU_SCALAR);
     prop_scalar.addSatellite(elements_);
     prop_scalar.propagateConstellation(propagation_time);
     StateVector state_scalar = prop_scalar.getSatelliteState(0);
     
     // CPU_SIMD模式
-    ConstellationPropagator prop_simd(0.0);
-    prop_simd.setComputeMode(ConstellationPropagator::CPU_SIMD);
+    J2ConstellationPropagator prop_simd(0.0);
+    prop_simd.setComputeMode(J2ConstellationPropagator::CPU_SIMD);
     prop_simd.addSatellite(elements_);
     prop_simd.propagateConstellation(propagation_time);
     StateVector state_simd = prop_simd.getSatelliteState(0);
@@ -66,16 +66,16 @@ TEST_F(SIMDConsistencyTest, MultiSatelliteConsistency) {
     }
     
     // SCALAR模式
-    ConstellationPropagator prop_scalar(0.0);
-    prop_scalar.setComputeMode(ConstellationPropagator::CPU_SCALAR);
+    J2ConstellationPropagator prop_scalar(0.0);
+    prop_scalar.setComputeMode(J2ConstellationPropagator::CPU_SCALAR);
     for (const auto& elem : test_elements) {
         prop_scalar.addSatellite(elem);
     }
     prop_scalar.propagateConstellation(propagation_time);
     
     // SIMD模式
-    ConstellationPropagator prop_simd(0.0);
-    prop_simd.setComputeMode(ConstellationPropagator::CPU_SIMD);
+    J2ConstellationPropagator prop_simd(0.0);
+    prop_simd.setComputeMode(J2ConstellationPropagator::CPU_SIMD);
     for (const auto& elem : test_elements) {
         prop_simd.addSatellite(elem);
     }

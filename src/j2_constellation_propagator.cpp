@@ -1,4 +1,4 @@
-#include "constellation_propagator.h"
+#include "j2_constellation_propagator.h"
 #include "j2_orbit_propagator.h"  // 用于CUDA路径中的状态->要素转换
 #include <algorithm>
 #include <array>
@@ -45,7 +45,7 @@ std::array<double, 3> computeJ2SecularRates(double semi_major_axis,
 
 }  // namespace
 
-ConstellationPropagator::ConstellationPropagator(double epoch_time)
+J2ConstellationPropagator::J2ConstellationPropagator(double epoch_time)
     : epoch_time_(epoch_time), current_time_(epoch_time), step_size_(60.0), 
       compute_mode_(CPU_SIMD) {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
@@ -62,13 +62,13 @@ ConstellationPropagator::ConstellationPropagator(double epoch_time)
     }
 }
 
-ConstellationPropagator::~ConstellationPropagator() {
+J2ConstellationPropagator::~J2ConstellationPropagator() {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     cleanupCUDA();
 #endif
 }
 
-void ConstellationPropagator::addSatellites(const std::vector<CompactOrbitalElements>& satellites) {
+void J2ConstellationPropagator::addSatellites(const std::vector<CompactOrbitalElements>& satellites) {
     ensureHostElementsUpToDate();
 
     size_t old_size = elements_.size();
@@ -90,7 +90,7 @@ void ConstellationPropagator::addSatellites(const std::vector<CompactOrbitalElem
     markDeviceElementsDirty();
 }
 
-void ConstellationPropagator::addSatellite(const CompactOrbitalElements& satellite) {
+void J2ConstellationPropagator::addSatellite(const CompactOrbitalElements& satellite) {
     ensureHostElementsUpToDate();
 
     size_t idx = elements_.size();
@@ -106,7 +106,7 @@ void ConstellationPropagator::addSatellite(const CompactOrbitalElements& satelli
     markDeviceElementsDirty();
 }
 
-void ConstellationPropagator::setStepSize(double step) {
+void J2ConstellationPropagator::setStepSize(double step) {
     if (step <= 0.0) {
         throw std::invalid_argument("Step size must be positive");
     }
@@ -114,7 +114,7 @@ void ConstellationPropagator::setStepSize(double step) {
     recalcSampleStride();
 }
 
-void ConstellationPropagator::setSampleInterval(double interval) {
+void J2ConstellationPropagator::setSampleInterval(double interval) {
     if (interval <= 0.0) {
         throw std::invalid_argument("Sample interval must be positive");
     }
@@ -122,7 +122,7 @@ void ConstellationPropagator::setSampleInterval(double interval) {
     recalcSampleStride();
 }
 
-void ConstellationPropagator::recalcSampleStride() {
+void J2ConstellationPropagator::recalcSampleStride() {
     if (step_size_ <= 0.0) {
         throw std::invalid_argument("Step size must be positive");
     }
@@ -146,7 +146,7 @@ void ConstellationPropagator::recalcSampleStride() {
     sample_interval_ = steps_per_sample_ * step_size_;
 }
 
-void ConstellationPropagator::propagateSamples(size_t sample_count) {
+void J2ConstellationPropagator::propagateSamples(size_t sample_count) {
     if (sample_count == 0) {
         return;
     }
@@ -157,7 +157,7 @@ void ConstellationPropagator::propagateSamples(size_t sample_count) {
     }
 }
 
-void ConstellationPropagator::integrateSteps(size_t steps) {
+void J2ConstellationPropagator::integrateSteps(size_t steps) {
     if (steps == 0) {
         return;
     }
@@ -189,7 +189,7 @@ void ConstellationPropagator::integrateSteps(size_t steps) {
     }
 }
 
-void ConstellationPropagator::integrateRemainder(double dt) {
+void J2ConstellationPropagator::integrateRemainder(double dt) {
     if (dt <= EPSILON) {
         return;
     }
@@ -212,7 +212,7 @@ void ConstellationPropagator::integrateRemainder(double dt) {
     }
 }
 
-void ConstellationPropagator::propagateConstellation(double target_time) {
+void J2ConstellationPropagator::propagateConstellation(double target_time) {
     double dt_total = target_time - current_time_;
     
     if (dt_total < EPSILON) {
@@ -242,7 +242,7 @@ void ConstellationPropagator::propagateConstellation(double target_time) {
     current_time_ = target_time;
 }
 
-void ConstellationPropagator::propagateScalarRange(size_t begin, size_t end, double dt) {
+void J2ConstellationPropagator::propagateScalarRange(size_t begin, size_t end, double dt) {
     auto computeDerivatives = [&](const CompactOrbitalElements& e) -> std::array<double, 3> {
         return computeJ2SecularRates(e.a, e.e, e.i);
     };
@@ -277,7 +277,7 @@ void ConstellationPropagator::propagateScalarRange(size_t begin, size_t end, dou
     }
 }
 
-void ConstellationPropagator::propagateScalar(double dt) {
+void J2ConstellationPropagator::propagateScalar(double dt) {
     ensureHostElementsUpToDate();
 
     propagateScalarRange(0, elements_.size(), dt);
@@ -285,7 +285,7 @@ void ConstellationPropagator::propagateScalar(double dt) {
     markDeviceElementsDirty();
 }
 
-void ConstellationPropagator::propagateSIMD(double dt) {
+void J2ConstellationPropagator::propagateSIMD(double dt) {
     ensureHostElementsUpToDate();
 
     size_t n = elements_.size();
@@ -401,7 +401,7 @@ void ConstellationPropagator::propagateSIMD(double dt) {
     markDeviceElementsDirty();
 }
 
-void ConstellationPropagator::normalizeAnglesSIMD(std::vector<double, Eigen::aligned_allocator<double>>& angles) {
+void J2ConstellationPropagator::normalizeAnglesSIMD(std::vector<double, Eigen::aligned_allocator<double>>& angles) {
     size_t n = angles.size();
     size_t simd_count = (n / 4) * 4;
     
@@ -428,7 +428,7 @@ void ConstellationPropagator::normalizeAnglesSIMD(std::vector<double, Eigen::ali
     }
 }
 
-CompactOrbitalElements ConstellationPropagator::getSatelliteElements(size_t satellite_id) const {
+CompactOrbitalElements J2ConstellationPropagator::getSatelliteElements(size_t satellite_id) const {
     ensureHostElementsUpToDate();
 
     if (satellite_id >= elements_.size()) {
@@ -446,12 +446,12 @@ CompactOrbitalElements ConstellationPropagator::getSatelliteElements(size_t sate
     return elem;
 }
 
-StateVector ConstellationPropagator::getSatelliteState(size_t satellite_id) const {
+StateVector J2ConstellationPropagator::getSatelliteState(size_t satellite_id) const {
     CompactOrbitalElements elem = getSatelliteElements(satellite_id);
     return elementsToState(elem);
 }
 
-StateVector ConstellationPropagator::elementsToState(const CompactOrbitalElements& elements) const {
+StateVector J2ConstellationPropagator::elementsToState(const CompactOrbitalElements& elements) const {
     StateVector state;
     
     double a = elements.a, e = elements.e, i = elements.i;
@@ -492,7 +492,7 @@ StateVector ConstellationPropagator::elementsToState(const CompactOrbitalElement
     return state;
 }
 
-CompactOrbitalElements ConstellationPropagator::applyImpulseScalar(const CompactOrbitalElements& elements,
+CompactOrbitalElements J2ConstellationPropagator::applyImpulseScalar(const CompactOrbitalElements& elements,
                                                                   const Eigen::Vector3d& delta_v, double t) const {
     // 将要素转为状态
     StateVector s = elementsToState(elements);
@@ -514,7 +514,7 @@ CompactOrbitalElements ConstellationPropagator::applyImpulseScalar(const Compact
     return out;
 }
 
-void ConstellationPropagator::applyImpulseToConstellation(const std::vector<Eigen::Vector3d>& delta_vs, double t) {
+void J2ConstellationPropagator::applyImpulseToConstellation(const std::vector<Eigen::Vector3d>& delta_vs, double t) {
     ensureHostElementsUpToDate();
 
     size_t n = elements_.size();
@@ -593,7 +593,7 @@ void ConstellationPropagator::applyImpulseToConstellation(const std::vector<Eige
     }
 }
 
-void ConstellationPropagator::applyImpulseToSatellites(const std::vector<size_t>& satellite_ids,
+void J2ConstellationPropagator::applyImpulseToSatellites(const std::vector<size_t>& satellite_ids,
                                                        const std::vector<Eigen::Vector3d>& delta_vs,
                                                        double t) {
     ensureHostElementsUpToDate();
@@ -681,7 +681,7 @@ void ConstellationPropagator::applyImpulseToSatellites(const std::vector<size_t>
     markDeviceElementsDirty();
 }
 
-void ConstellationPropagator::applyImpulseSubsetSIMD(const std::vector<size_t>& satellite_ids,
+void J2ConstellationPropagator::applyImpulseSubsetSIMD(const std::vector<size_t>& satellite_ids,
                                                      const std::vector<Eigen::Vector3d>& delta_vs,
                                                      double t) {
     ensureHostElementsUpToDate();
@@ -767,7 +767,7 @@ void ConstellationPropagator::applyImpulseSubsetSIMD(const std::vector<size_t>& 
     markDeviceElementsDirty();
 }
 
-Eigen::MatrixXd ConstellationPropagator::getAllPositions() const {
+Eigen::MatrixXd J2ConstellationPropagator::getAllPositions() const {
     size_t n = elements_.size();
     Eigen::MatrixXd positions(3, n);
     
@@ -779,7 +779,7 @@ Eigen::MatrixXd ConstellationPropagator::getAllPositions() const {
     return positions;
 }
 
-double ConstellationPropagator::computeEccentricAnomaly(double M, double e) const {
+double J2ConstellationPropagator::computeEccentricAnomaly(double M, double e) const {
     M = normalizeAngle(M);
     double E = (e < 0.8) ? M : (M > M_PI ? M - e : M + e);
     
@@ -792,18 +792,18 @@ double ConstellationPropagator::computeEccentricAnomaly(double M, double e) cons
     return E;
 }
 
-double ConstellationPropagator::computeTrueAnomaly(double E, double e) const {
+double J2ConstellationPropagator::computeTrueAnomaly(double E, double e) const {
     double tan_nu_2 = std::sqrt((1.0 + e) / (1.0 - e)) * std::tan(E / 2.0);
     return normalizeAngle(2.0 * std::atan(tan_nu_2));
 }
 
-double ConstellationPropagator::normalizeAngle(double angle) const {
+double J2ConstellationPropagator::normalizeAngle(double angle) const {
     angle = std::fmod(angle, 2.0 * M_PI);
     if (angle < 0) angle += 2.0 * M_PI;
     return angle;
 }
 
-bool ConstellationPropagator::isCudaAvailable() noexcept {
+bool J2ConstellationPropagator::isCudaAvailable() noexcept {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     // 缓存检测结果，避免每帧重复调用带来的开销
     static const bool available = []() noexcept {
@@ -818,7 +818,7 @@ bool ConstellationPropagator::isCudaAvailable() noexcept {
 #endif
 }
 
-void ConstellationPropagator::propagateCUDA(double dt, size_t iterations) {
+void J2ConstellationPropagator::propagateCUDA(double dt, size_t iterations) {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     size_t n = elements_.size();
     if (n == 0 || iterations == 0) return;
@@ -850,7 +850,7 @@ void ConstellationPropagator::propagateCUDA(double dt, size_t iterations) {
 #endif
 }
 
-void ConstellationPropagator::initializeCUDA() {
+void J2ConstellationPropagator::initializeCUDA() {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     size_t n = elements_.size();
     if (n == 0) {
@@ -883,7 +883,7 @@ void ConstellationPropagator::initializeCUDA() {
 #endif
 }
 
-void ConstellationPropagator::cleanupCUDA() {
+void J2ConstellationPropagator::cleanupCUDA() {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     if (gpu_buffer_size_ > 0) {
         cudaFree(d_a_);
@@ -910,7 +910,7 @@ void ConstellationPropagator::cleanupCUDA() {
 #endif
 }
 
-void ConstellationPropagator::ensureDeviceElementsUpToDate() {
+void J2ConstellationPropagator::ensureDeviceElementsUpToDate() {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     if (!device_elements_dirty_) {
         return;
@@ -935,7 +935,7 @@ void ConstellationPropagator::ensureDeviceElementsUpToDate() {
 #endif
 }
 
-void ConstellationPropagator::ensureHostElementsUpToDate() const {
+void J2ConstellationPropagator::ensureHostElementsUpToDate() const {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     if (!host_elements_dirty_) {
         return;
@@ -960,21 +960,21 @@ void ConstellationPropagator::ensureHostElementsUpToDate() const {
 #endif
 }
 
-void ConstellationPropagator::markDeviceElementsDirty() {
+void J2ConstellationPropagator::markDeviceElementsDirty() {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     device_elements_dirty_ = true;
     host_elements_dirty_ = false;
 #endif
 }
 
-void ConstellationPropagator::markHostElementsDirty() {
+void J2ConstellationPropagator::markHostElementsDirty() {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     host_elements_dirty_ = true;
     device_elements_dirty_ = false;
 #endif
 }
 
-void ConstellationPropagator::applyImpulseSIMD(const std::vector<Eigen::Vector3d>& delta_vs, double t) {
+void J2ConstellationPropagator::applyImpulseSIMD(const std::vector<Eigen::Vector3d>& delta_vs, double t) {
     ensureHostElementsUpToDate();
 
     size_t n = elements_.size();
