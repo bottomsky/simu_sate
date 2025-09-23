@@ -8,11 +8,16 @@
 #include "common_types.h"
 #include "j2_constellation_propagator.h"
 
+enum class ConjunctionPhase { Start, Closest, End };
+
 struct ConjunctionEvent {
     std::size_t sat_i;
     std::size_t sat_j;
-    double tca;            // time of closest approach (s, relative to predictor epoch)
-    double miss_distance;  // minimum separation (m)
+    ConjunctionPhase phase; // Start/Closest/End
+    double time;            // event time (s, relative to predictor epoch)
+    double miss_distance;   // separation at event time (m)
+    StateVector state_i;    // ECI position/velocity of sat_i at event time
+    StateVector state_j;    // ECI position/velocity of sat_j at event time
 };
 
 struct ConjunctionPredictorConfig {
@@ -48,10 +53,9 @@ private:
     std::vector<ConjunctionEvent> predictHierarchical(J2ConstellationPropagator prop) const;
 
     // utilities
-    static ConjunctionEvent refineBracket(const StateVector& s0_i, const StateVector& s0_j,
-                                          const StateVector& s1_i, const StateVector& s1_j,
-                                          double t0, double t1);
+    static std::vector<ConjunctionEvent> refineBracket(const StateVector& s0_i, const StateVector& s0_j,
+                                                       const StateVector& s1_i, const StateVector& s1_j,
+                                                       double t0, double t1, double threshold);
 };
 
 #endif // SATELLITE_CONJUNCTION_PREDICTOR_H
-

@@ -121,11 +121,15 @@ std::vector<ConjunctionEvent> SatelliteConjunctionPredictor::predictSpatialGrid(
                             auto efj1 = pj.propagate(cur + cfg_.refine_dt);
                             StateVector s1i = pi.elementsToState(efi1);
                             StateVector s1j = pj.elementsToState(efj1);
-                            ConjunctionEvent ev = refineBracket(s0i, s0j, s1i, s1j, cur, std::min(cfg_.horizon, cur+cfg_.refine_dt));
-                            ev.sat_i = i; ev.sat_j = j;
-                            if (ev.miss_distance <= cfg_.threshold) {
-                                events.push_back(ev);
-                                seen_pairs.insert(pair_id(i,j));
+                            auto evs = refineBracket(s0i, s0j, s1i, s1j, cur, std::min(cfg_.horizon, cur+cfg_.refine_dt), cfg_.threshold);
+                            for (auto& ev : evs) {
+                                ev.sat_i = i; ev.sat_j = j;
+                                if (ev.miss_distance <= cfg_.threshold) {
+                                    events.push_back(ev);
+                                    if (ev.phase == ConjunctionPhase::Closest) {
+                                        seen_pairs.insert(pair_id(i,j));
+                                    }
+                                }
                             }
                         }
                     }
@@ -167,9 +171,11 @@ std::vector<ConjunctionEvent> SatelliteConjunctionPredictor::predictHierarchical
                     auto efj1 = pj.propagate(cur + cfg_.refine_dt);
                     StateVector s1i = pi.elementsToState(efi1);
                     StateVector s1j = pj.elementsToState(efj1);
-                    ConjunctionEvent ev = refineBracket(s0i, s0j, s1i, s1j, cur, std::min(cfg_.horizon, cur+cfg_.refine_dt));
-                    ev.sat_i = i; ev.sat_j = j;
-                    if (ev.miss_distance <= cfg_.threshold) events.push_back(ev);
+                    auto evs = refineBracket(s0i, s0j, s1i, s1j, cur, std::min(cfg_.horizon, cur+cfg_.refine_dt), cfg_.threshold);
+                    for (auto& ev : evs) {
+                        ev.sat_i = i; ev.sat_j = j;
+                        if (ev.miss_distance <= cfg_.threshold) events.push_back(ev);
+                    }
                 }
             }
         }
@@ -177,22 +183,73 @@ std::vector<ConjunctionEvent> SatelliteConjunctionPredictor::predictHierarchical
     return events;
 }
 
-ConjunctionEvent SatelliteConjunctionPredictor::refineBracket(const StateVector& s0_i, const StateVector& s0_j,
-                                                              const StateVector& s1_i, const StateVector& s1_j,
-                                                              double t0, double t1) {
-    // Linear relative motion within [t0,t1]
+std::vector<ConjunctionEvent> SatelliteConjunctionPredictor::refineBracket(const StateVector& s0_i, const StateVector& s0_j,
+                                                                           const StateVector& s1_i, const StateVector& s1_j,
+                                                                           double t0, double t1, double threshold) {
+    std::vector<ConjunctionEvent> out;
+    const double dt = std::max(1e-6, t1 - t0);
+    const double thr2 = threshold * threshold;
+
     Eigen::Vector3d r0 = s0_i.r - s0_j.r;
     Eigen::Vector3d r1 = s1_i.r - s1_j.r;
-    Eigen::Vector3d v = (r1 - r0) / (t1 - t0);
-    double v2 = v.squaredNorm();
-    double tau = 0.0;
-    if (v2 > 0) {
-        tau = - r0.dot(v) / v2; // time offset from t0
-        if (tau < 0.0) tau = 0.0; else if (tau > (t1 - t0)) tau = (t1 - t0);
+    Eigen::Vector3d v = (r1 - r0) / dt;
+    const double a = v.squaredNorm();
+    const double b = 2.0 * r0.dot(v);
+    const double c = r0.squaredNorm() - thr2;
+
+    auto interp_state = [&](const StateVector& s0, const StateVector& s1, double tau)->StateVector{
+        double alpha = tau / dt;
+        StateVector s{};
+        s.r = s0.r + (s1.r - s0.r) * alpha;
+        s.v = s0.v + (s1.v - s0.v) * alpha;
+        return s;
+    };
+
+    // Closest approach within bracket
+    double tau_star = 0.0;
+    if (a > 0.0) {
+        tau_star = - b / (2.0 * a);
+        if (tau_star < 0.0) tau_star = 0.0; else if (tau_star > dt) tau_star = dt;
     }
-    Eigen::Vector3d r_tau = r0 + v * tau;
-    ConjunctionEvent ev;
-    ev.tca = t0 + tau;
-    ev.miss_distance = std::sqrt(r_tau.squaredNorm());
-    return ev;
+    Eigen::Vector3d r_star = r0 + v * tau_star;
+    ConjunctionEvent cca{};
+    cca.phase = ConjunctionPhase::Closest;
+    cca.time = t0 + tau_star;
+    cca.miss_distance = std::sqrt(r_star.squaredNorm());
+    cca.state_i = interp_state(s0_i, s1_i, tau_star);
+    cca.state_j = interp_state(s0_j, s1_j, tau_star);
+    out.push_back(cca);
+
+    // Start/End crossings solving |r0 + v*tau|^2 = thr^2
+    if (a > 0.0) {
+        double disc = b*b - 4.0*a*c;
+        if (disc >= 0.0) {
+            double sqrtD = std::sqrt(std::max(0.0, disc));
+            double t1r = (-b - sqrtD) / (2.0*a);
+            double t2r = (-b + sqrtD) / (2.0*a);
+            if (t1r > t2r) std::swap(t1r, t2r);
+            double f0 = c; // distance^2 - thr^2 at t0
+            // clamp to bracket
+            auto in_window = [&](double tau){ return tau >= 0.0 && tau <= dt; };
+            if (in_window(t1r)) {
+                ConjunctionEvent ev{};
+                ev.time = t0 + t1r;
+                ev.miss_distance = threshold; // on boundary
+                ev.state_i = interp_state(s0_i, s1_i, t1r);
+                ev.state_j = interp_state(s0_j, s1_j, t1r);
+                ev.phase = (f0 > 0.0) ? ConjunctionPhase::Start : ConjunctionPhase::End;
+                out.push_back(ev);
+            }
+            if (in_window(t2r)) {
+                ConjunctionEvent ev{};
+                ev.time = t0 + t2r;
+                ev.miss_distance = threshold; // on boundary
+                ev.state_i = interp_state(s0_i, s1_i, t2r);
+                ev.state_j = interp_state(s0_j, s1_j, t2r);
+                ev.phase = (f0 > 0.0) ? ConjunctionPhase::End : ConjunctionPhase::Start;
+                out.push_back(ev);
+            }
+        }
+    }
+    return out;
 }
