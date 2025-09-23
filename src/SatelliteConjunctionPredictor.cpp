@@ -4,6 +4,8 @@
 #include <unordered_set>
 #include <cmath>
 #include <tuple>
+#include <algorithm>
+
 #include "j2_orbit_propagator.h"
 
 namespace {
@@ -26,6 +28,36 @@ struct CellKeyHash {
 inline double sqr(double v) { return v*v; }
 inline double norm2(const Eigen::Vector3d& v) { return v.squaredNorm(); }
 inline double dist2(const Eigen::Vector3d& a, const Eigen::Vector3d& b) { return (a-b).squaredNorm(); }
+
+double wrapPi(double angle) {
+    angle = std::fmod(angle + M_PI, 2.0 * M_PI);
+    if (angle < 0.0) angle += 2.0 * M_PI;
+    return angle - M_PI;
+}
+
+struct Rates {
+    double raandot;
+    double argpdot;
+    double meandot;
+};
+
+Rates computeRates(const CompactOrbitalElements& elem) {
+    const double a = elem.a;
+    const double e = elem.e;
+    const double inc = elem.i;
+    const double n = std::sqrt(MU / (a * a * a));
+    const double p = std::max(1e-3, a * (1.0 - e * e));
+    const double factor = 1.5 * J2 * n * std::pow(RE / p, 2.0);
+    const double cosi = std::cos(inc);
+    const double cos2 = cosi * cosi;
+    const double sqrt_term = std::sqrt(std::max(0.0, 1.0 - e * e));
+
+    Rates r{};
+    r.raandot = -factor * cosi;
+    r.argpdot = 0.5 * factor * (5.0 * cos2 - 1.0);
+    r.meandot = n + 0.5 * factor * sqrt_term * (3.0 * cos2 - 1.0);
+    return r;
+}
 }
 
 std::vector<ConjunctionEvent> SatelliteConjunctionPredictor::predict(const J2ConstellationPropagator& propagator) const {
@@ -39,14 +71,21 @@ std::vector<ConjunctionEvent> SatelliteConjunctionPredictor::predict(const J2Con
         else strat = ConjunctionStrategy::SpatialGrid;
     }
 
+    if (strat == ConjunctionStrategy::ConnectionTable) {
+        ensureConnectionTable(propagator);
+    }
+
     switch (strat) {
         case ConjunctionStrategy::Hierarchical:
             return predictHierarchical(std::move(prop));
         case ConjunctionStrategy::SpatialGrid:
             return predictSpatialGrid(std::move(prop));
         case ConjunctionStrategy::ConnectionTable:
-            // Not yet implemented; fall back to spatial grid
-            return predictSpatialGrid(std::move(prop));
+            if (!connection_table_valid_) {
+                // fallback if table could not be built
+                return predictSpatialGrid(std::move(prop));
+            }
+            return predictConnectionTable(std::move(prop));
         case ConjunctionStrategy::Auto:
         default:
             return predictSpatialGrid(std::move(prop));
@@ -175,6 +214,113 @@ std::vector<ConjunctionEvent> SatelliteConjunctionPredictor::predictHierarchical
                     for (auto& ev : evs) {
                         ev.sat_i = i; ev.sat_j = j;
                         if (ev.miss_distance <= cfg_.threshold) events.push_back(ev);
+                    }
+                }
+            }
+        }
+    }
+    return events;
+}
+
+void SatelliteConjunctionPredictor::ensureConnectionTable(const J2ConstellationPropagator& propagator) const {
+    const std::size_t n = propagator.getSatelliteCount();
+    if (connection_table_valid_ && cached_satellite_count_ == n) return;
+
+    connection_table_.assign(n, {});
+    cached_satellite_count_ = n;
+    connection_table_valid_ = false;
+    if (n < 2 || cfg_.threshold <= 0.0) return;
+
+    std::vector<CompactOrbitalElements> elems(n);
+    std::vector<Rates> rates(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        elems[i] = propagator.getSatelliteElements(i);
+        rates[i] = computeRates(elems[i]);
+    }
+
+    const double horizon = std::max(0.0, cfg_.horizon);
+    for (std::size_t i = 0; i + 1 < n; ++i) {
+        const auto& ei = elems[i];
+        const auto& ri = rates[i];
+        for (std::size_t j = i + 1; j < n; ++j) {
+            const auto& ej = elems[j];
+            const auto& rj = rates[j];
+
+            double a_ref = std::max(1.0, std::min(ei.a, ej.a));
+            double abs_da = std::abs(ei.a - ej.a);
+            if (abs_da > cfg_.threshold) continue;
+
+            double abs_di = std::abs(ei.i - ej.i);
+            double i_thresh = cfg_.threshold / a_ref;
+            if (abs_di > i_thresh) continue;
+
+            double sin_i_eff = std::max(1e-3, std::sin(0.5 * (ei.i + ej.i)));
+            double omega_thresh = cfg_.threshold / (a_ref * sin_i_eff);
+            omega_thresh += std::abs(ri.raandot - rj.raandot) * horizon;
+            double delta_omega = std::abs(wrapPi(ei.O - ej.O));
+            if (delta_omega > omega_thresh) continue;
+
+            double base_u_i = ei.w + ei.M;
+            double base_u_j = ej.w + ej.M;
+            double u_thresh = cfg_.threshold / a_ref;
+            double rate_u_i = ri.argpdot + ri.meandot;
+            double rate_u_j = rj.argpdot + rj.meandot;
+            u_thresh += std::abs(rate_u_i - rate_u_j) * horizon;
+            double delta_u = std::abs(wrapPi(base_u_i - base_u_j));
+            if (delta_u > u_thresh) continue;
+
+            connection_table_[i].push_back(j);
+        }
+    }
+
+    connection_table_valid_ = true;
+}
+
+std::vector<ConjunctionEvent> SatelliteConjunctionPredictor::predictConnectionTable(J2ConstellationPropagator prop) const {
+    std::vector<ConjunctionEvent> events;
+    const std::size_t n = prop.getSatelliteCount();
+    if (n < 2 || !connection_table_valid_ || connection_table_.size() != n) {
+        return events;
+    }
+    const double thresh2 = cfg_.threshold * cfg_.threshold;
+
+    double cur = 0.0;
+    while (cur < cfg_.horizon) {
+        cur = std::min(cfg_.horizon, cur + cfg_.coarse_dt);
+        prop.propagateConstellation(cur);
+        auto pos0 = prop.getAllPositions();
+        for (std::size_t i = 0; i < n; ++i) {
+            const auto& neighbors = connection_table_[i];
+            for (std::size_t j : neighbors) {
+                if (j <= i || j >= n) continue;
+                Eigen::Vector3d pi = pos0.col(static_cast<Eigen::Index>(i));
+                Eigen::Vector3d pj = pos0.col(static_cast<Eigen::Index>(j));
+                if (dist2(pi, pj) <= thresh2) {
+                    StateVector s0i = prop.getSatelliteState(i);
+                    StateVector s0j = prop.getSatelliteState(j);
+
+                    // Refine using single-satellite propagators
+                    auto ei = prop.getSatelliteElements(i);
+                    auto ej = prop.getSatelliteElements(j);
+                    OrbitalElements efi{}; efi.a=ei.a; efi.e=ei.e; efi.i=ei.i; efi.O=ei.O; efi.w=ei.w; efi.M=ei.M; efi.t=cur;
+                    OrbitalElements efj{}; efj.a=ej.a; efj.e=ej.e; efj.i=ej.i; efj.O=ej.O; efj.w=ej.w; efj.M=ej.M; efj.t=cur;
+                    J2OrbitPropagator pi_single(efi);
+                    J2OrbitPropagator pj_single(efj);
+                    double refine_step = std::max(1.0, cfg_.refine_dt / 5.0);
+                    pi_single.setStepSize(refine_step);
+                    pj_single.setStepSize(refine_step);
+                    auto efi1 = pi_single.propagate(cur + cfg_.refine_dt);
+                    auto efj1 = pj_single.propagate(cur + cfg_.refine_dt);
+                    StateVector s1i = pi_single.elementsToState(efi1);
+                    StateVector s1j = pj_single.elementsToState(efj1);
+
+                    auto evs = refineBracket(s0i, s0j, s1i, s1j, cur, std::min(cfg_.horizon, cur + cfg_.refine_dt), cfg_.threshold);
+                    for (auto& ev : evs) {
+                        ev.sat_i = i;
+                        ev.sat_j = j;
+                        if (ev.miss_distance <= cfg_.threshold) {
+                            events.push_back(ev);
+                        }
                     }
                 }
             }

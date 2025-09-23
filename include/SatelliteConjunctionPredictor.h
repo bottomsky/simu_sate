@@ -51,11 +51,18 @@ private:
     // strategies
     std::vector<ConjunctionEvent> predictSpatialGrid(J2ConstellationPropagator prop) const;
     std::vector<ConjunctionEvent> predictHierarchical(J2ConstellationPropagator prop) const;
+    std::vector<ConjunctionEvent> predictConnectionTable(J2ConstellationPropagator prop) const;
 
     // utilities
     static std::vector<ConjunctionEvent> refineBracket(const StateVector& s0_i, const StateVector& s0_j,
                                                        const StateVector& s1_i, const StateVector& s1_j,
                                                        double t0, double t1, double threshold);
+
+    void ensureConnectionTable(const J2ConstellationPropagator& propagator) const;
+
+    mutable std::vector<std::vector<std::size_t>> connection_table_;
+    mutable std::size_t cached_satellite_count_ = 0;
+    mutable bool connection_table_valid_ = false;
 };
 
 #endif // SATELLITE_CONJUNCTION_PREDICTOR_H

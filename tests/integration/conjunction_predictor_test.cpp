@@ -51,4 +51,21 @@ TEST(ConjunctionPredictorTest, DetectsCloseApproachAtEpoch) {
         }
     }
     EXPECT_TRUE(found);
+
+    // Repeat with connection table strategy
+    J2ConstellationPropagator prop_ct(cfg.epoch);
+    prop_ct.setStepSize(30.0);
+    prop_ct.addSatellites(sats);
+
+    SatelliteConjunctionPredictor predictor_ct(pcfg, ConjunctionStrategy::ConnectionTable);
+    auto events_ct = predictor_ct.predict(prop_ct);
+    ASSERT_FALSE(events_ct.empty());
+    bool found_ct = false;
+    for (const auto& ev : events_ct) {
+        if ((ev.sat_i == 0 && ev.sat_j == 1) || (ev.sat_i == 1 && ev.sat_j == 0)) {
+            EXPECT_NEAR(ev.miss_distance, separation, 50.0);
+            found_ct = true;
+        }
+    }
+    EXPECT_TRUE(found_ct);
 }
