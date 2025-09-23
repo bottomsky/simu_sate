@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <limits>
 #if defined(__AVX2__) || defined(__AVX__)
 #include <immintrin.h>
 #endif
@@ -53,6 +54,8 @@ ConstellationPropagator::ConstellationPropagator(double epoch_time)
     gpu_buffer_size_ = 0;
     cuda_stream_ = 0;
 #endif
+    sample_interval_ = step_size_;
+    steps_per_sample_ = 1;
     // 自动检测 CUDA 并优先启用 GPU 模式（当运行环境支持且构建启用 CUDA 时）
     if (isCudaAvailable()) {
         compute_mode_ = GPU_CUDA;
@@ -103,6 +106,101 @@ void ConstellationPropagator::addSatellite(const CompactOrbitalElements& satelli
     markDeviceElementsDirty();
 }
 
+void ConstellationPropagator::setStepSize(double step) {
+    if (step <= 0.0) {
+        throw std::invalid_argument("Step size must be positive");
+    }
+    step_size_ = step;
+    recalcSampleStride();
+}
+
+void ConstellationPropagator::setSampleInterval(double interval) {
+    if (interval <= 0.0) {
+        throw std::invalid_argument("Sample interval must be positive");
+    }
+    sample_interval_ = interval;
+    recalcSampleStride();
+}
+
+void ConstellationPropagator::recalcSampleStride() {
+    const double ratio = sample_interval_ / step_size_;
+    if (ratio < 1.0 - 1e-9) {
+        throw std::invalid_argument("Sample interval must not be smaller than step size");
+    }
+    const double rounded = std::round(ratio);
+    if (std::abs(rounded - ratio) > 1e-8) {
+        throw std::invalid_argument("Sample interval must be an integer multiple of step size");
+    }
+    steps_per_sample_ = std::max<size_t>(1, static_cast<size_t>(rounded));
+    sample_interval_ = steps_per_sample_ * step_size_;
+}
+
+void ConstellationPropagator::propagateSamples(size_t sample_count) {
+    if (sample_count == 0) {
+        return;
+    }
+
+    for (size_t s = 0; s < sample_count; ++s) {
+        integrateSteps(steps_per_sample_);
+        current_time_ += step_size_ * static_cast<double>(steps_per_sample_);
+    }
+}
+
+void ConstellationPropagator::integrateSteps(size_t steps) {
+    if (steps == 0) {
+        return;
+    }
+
+    switch (compute_mode_) {
+        case CPU_SCALAR: {
+            for (size_t iter = 0; iter < steps; ++iter) {
+                propagateScalar(step_size_);
+            }
+            break;
+        }
+        case CPU_SIMD: {
+            for (size_t iter = 0; iter < steps; ++iter) {
+                propagateSIMD(step_size_);
+            }
+            break;
+        }
+        case GPU_CUDA: {
+            if (isCudaAvailable()) {
+                propagateCUDA(step_size_, steps);
+            } else {
+                std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
+                for (size_t iter = 0; iter < steps; ++iter) {
+                    propagateSIMD(step_size_);
+                }
+            }
+            break;
+        }
+    }
+}
+
+void ConstellationPropagator::integrateRemainder(double dt) {
+    if (dt <= EPSILON) {
+        return;
+    }
+
+    switch (compute_mode_) {
+        case CPU_SCALAR:
+            propagateScalar(dt);
+            break;
+        case CPU_SIMD:
+            propagateSIMD(dt);
+            break;
+        case GPU_CUDA:
+            if (isCudaAvailable()) {
+                propagateCUDA(dt, 1);
+            } else {
+                std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
+                propagateSIMD(dt);
+            }
+            break;
+    }
+}
+
 void ConstellationPropagator::propagateConstellation(double target_time) {
     double dt_total = target_time - current_time_;
     
@@ -111,32 +209,31 @@ void ConstellationPropagator::propagateConstellation(double target_time) {
     }
     
     // 分步积分
-    double remaining_time = dt_total;
     if (!adaptive_step_size_) {
-        while (remaining_time > EPSILON) {
-            double dt = std::min(remaining_time, step_size_);
-            
-            switch (compute_mode_) {
-                case CPU_SCALAR:
-                    propagateScalar(dt);
-                    break;
-                case CPU_SIMD:
-                    propagateSIMD(dt);
-                    break;
-                case GPU_CUDA:
-                    if (isCudaAvailable()) {
-                        propagateCUDA(dt);
-                    } else {
-                        std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
-                        propagateSIMD(dt);
-                    }
-                    break;
+        size_t steps = 0;
+        double remainder = dt_total;
+        if (step_size_ > EPSILON) {
+            double raw_steps = std::floor(dt_total / step_size_);
+            if (raw_steps > 0.0) {
+                steps = static_cast<size_t>(raw_steps);
+                remainder = dt_total - step_size_ * raw_steps;
             }
-            
-            remaining_time -= dt;
+            if (remainder < EPSILON) {
+                remainder = 0.0;
+            } else if (remainder > step_size_ - EPSILON) {
+                ++steps;
+                remainder = 0.0;
+            }
         }
+
+        integrateSteps(steps);
+        integrateRemainder(remainder);
+
+        current_time_ = target_time;
+        return;
     } else {
         // 自适应步长：对全体卫星估计局部误差，选取全体可接受的步长
+        double remaining_time = dt_total;
         double dt = std::min(remaining_time, step_size_);
         dt = std::max(min_step_size_, std::min(dt, max_step_size_));
         while (remaining_time > EPSILON) {
@@ -155,18 +252,7 @@ void ConstellationPropagator::propagateConstellation(double target_time) {
             }
             if (max_err <= tolerance_ || dt <= min_step_size_ + 1e-12) {
                 // 接受步长
-                switch (compute_mode_) {
-                    case CPU_SCALAR: propagateScalar(dt); break;
-                    case CPU_SIMD:   propagateSIMD(dt);   break;
-                    case GPU_CUDA:
-                        if (isCudaAvailable()) {
-                            propagateCUDA(dt);
-                        } else {
-                            std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
-                            propagateSIMD(dt);
-                        }
-                        break;
-                }
+                integrateRemainder(dt);
                 remaining_time -= dt;
                 // 放宽步长
                 double safety = 0.9, growth = 1.5;
@@ -796,10 +882,10 @@ bool ConstellationPropagator::isCudaAvailable() noexcept {
 #endif
 }
 
-void ConstellationPropagator::propagateCUDA(double dt) {
+void ConstellationPropagator::propagateCUDA(double dt, size_t iterations) {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     size_t n = elements_.size();
-    if (n == 0) return;
+    if (n == 0 || iterations == 0) return;
 
     initializeCUDA();
 
@@ -807,16 +893,24 @@ void ConstellationPropagator::propagateCUDA(double dt) {
 
     cudaStream_t stream = cuda_stream_ ? cuda_stream_ : 0;
 
-    cuda_propagate_j2_persistent(d_a_, d_e_, d_i_, d_O_, d_w_, d_M_,
-                                 n, dt, MU, RE, J2, stream);
-
-    cudaStreamSynchronize(stream);
+    const size_t max_iterations = static_cast<size_t>(std::numeric_limits<int>::max());
+    size_t remaining = iterations;
+    while (remaining > 0) {
+        size_t batch = std::min(remaining, max_iterations);
+        cuda_propagate_j2_persistent(d_a_, d_e_, d_i_, d_O_, d_w_, d_M_,
+                                     n, dt, MU, RE, J2, batch, stream);
+        cudaStreamSynchronize(stream);
+        remaining -= batch;
+        // 更新常量后下一批次仍可复用同一缓冲区
+    }
 
     markHostElementsDirty();
 #else
     // 回退到CPU实现
     std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
-    propagateSIMD(dt);
+    for (size_t iter = 0; iter < iterations; ++iter) {
+        propagateSIMD(dt);
+    }
 #endif
 }
 

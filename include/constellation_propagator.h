@@ -61,7 +61,10 @@ public:
     
     // 批量外推到指定时间
     void propagateConstellation(double target_time);
-    
+
+    // 根据采样间隔向前推进若干采样点（每个采样点包含多个仿真步）
+    void propagateSamples(size_t sample_count = 1);
+
     // 获取指定卫星的当前状态
     StateVector getSatelliteState(size_t satellite_id) const;
     
@@ -80,8 +83,12 @@ public:
                                   double t);
     
     // 设置积分步长
-    void setStepSize(double step) { step_size_ = step; }
-    
+    void setStepSize(double step);
+
+    // 设置采样间隔（必须为积分步长的整数倍）
+    void setSampleInterval(double interval);
+    double getSampleInterval() const { return sample_interval_; }
+
     // 启用/禁用自适应步长
     void setAdaptiveStepSize(bool enable) { adaptive_step_size_ = enable; }
     
@@ -120,7 +127,7 @@ private:
     void propagateSIMD(double dt);
     
     // GPU CUDA计算
-    void propagateCUDA(double dt);
+    void propagateCUDA(double dt, size_t iterations = 1);
     
     // 计算J2摄动导数 (SIMD优化)
     void computeDerivativesSIMD(const SIMDOrbitalElements& elements, 
@@ -165,6 +172,9 @@ private:
     void ensureHostElementsUpToDate() const;
     void markDeviceElementsDirty();
     void markHostElementsDirty();
+    void recalcSampleStride();
+    void integrateSteps(size_t steps);
+    void integrateRemainder(double dt);
 
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     // CUDA相关成员（在启用CUDA工具链时可用）
@@ -183,13 +193,16 @@ private:
     cublasHandle_t cublas_handle_;
 #endif
 
+    double sample_interval_;
+    size_t steps_per_sample_;
     mutable bool device_elements_dirty_ = false; // 主机数据变动后需重新上传
     mutable bool host_elements_dirty_ = false;   // GPU数据更新后需回传
 };
 
 // CUDA设备函数声明 (总是可见，供链接时调用)
 extern "C" {
-    void cuda_propagate_j2(double* elements, size_t num_satellites, double dt, double mu, double re, double j2);
+    void cuda_propagate_j2(double* elements, size_t num_satellites, double dt,
+                           double mu, double re, double j2, size_t num_steps);
     void cuda_compute_positions(double* elements, double* positions, size_t num_satellites);
     
     // GPU 端施加脉冲：输入SoA元素与ΔV（SoA：vx,vy,vz）
@@ -200,6 +213,7 @@ extern "C" {
                                      double* d_O, double* d_w, double* d_M,
                                      size_t num_satellites, double dt,
                                      double mu, double re, double j2,
+                                     size_t num_steps,
                                      void* stream);
     void cuda_compute_positions_persistent(double* d_a, double* d_e, double* d_i,
                                           double* d_O, double* d_w, double* d_M,

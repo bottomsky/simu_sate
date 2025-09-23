@@ -38,6 +38,7 @@
 #endif
 #include <cmath>
 #include <cstddef>
+#include <limits>
 
 // 当没有CUDA时，提供空的实现，以确保代码可以链接和编译。
 #if !defined(HAVE_CUDA_TOOLKIT) || !HAVE_CUDA_TOOLKIT
@@ -53,7 +54,7 @@ extern "C" {
  * @param j2 地球J2摄动系数。
  */
 void cuda_propagate_j2(double* elements, size_t num_satellites, double dt,
-                      double mu, double re, double j2) {
+                      double mu, double re, double j2, size_t /*num_steps*/) {
     // 如果在没有CUDA支持的情况下调用此函数，则向标准错误流打印警告。
     std::cerr << "Warning: CUDA not available. Please use CPU_SCALAR or CPU_SIMD mode." << std::endl;
 }
@@ -77,6 +78,7 @@ void cuda_propagate_j2_persistent(double* d_a, double* d_e, double* d_i,
                                  double* d_O, double* d_w, double* d_M,
                                  size_t num_satellites, double dt,
                                  double mu, double re, double j2,
+                                 size_t /*num_steps*/,
                                  void* stream) {
     std::cerr << "Warning: CUDA not available. Please use CPU_SCALAR or CPU_SIMD mode." << std::endl;
 }
@@ -136,7 +138,7 @@ __device__ double normalize_angle_cuda(double angle) {
  */
 __global__ void j2_propagate_kernel(double* a, double* e, double* i, 
                                    double* O, double* w, double* M,
-                                   int num_satellites, double dt) {
+                                   int num_satellites, double dt, int iterations) {
     // 计算当前线程处理的卫星索引。
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     
@@ -149,30 +151,29 @@ __global__ void j2_propagate_kernel(double* a, double* e, double* i,
         double w_val = w[idx];
         double M_val = M[idx];
         
-        // 计算平均角速度 n = sqrt(d_MU / a^3)
+        if (iterations <= 0) {
+            O[idx] = normalize_angle_cuda(O_val);
+            w[idx] = normalize_angle_cuda(w_val);
+            M[idx] = normalize_angle_cuda(M_val);
+            return;
+        }
+
         double n = sqrt(d_MU / (a_val * a_val * a_val));
-        
-        // 计算J2摄动引起的长期变化率的公共因子，与CPU实现保持一致：
-        // p = a * (1 - e^2)
         double one_minus_e2 = 1.0 - e_val * e_val;
         double p = a_val * one_minus_e2;
-        // factor = (3/2) * J2 * n * (RE/p)^2
         double factor = 1.5 * d_J2 * n * (d_RE / p) * (d_RE / p);
-        
-        // 预计算三角函数值。
         double cos_i = cos(i_val);
         double cos2_i = cos_i * cos_i;
 
-        // 计算升交点赤经、近地点幅角和平近点角的导数，并乘以时间步长得到变化量。
-        // dO/dt = - (3/2) * n * J2 * (Re/p)^2 * cos(i)
-        double dO = -factor * cos_i * dt;
-        double dw = 0.5 * factor * (5.0 * cos2_i - 1.0) * dt;
-        double dM = (n + 0.5 * factor * sqrt(one_minus_e2) * (3.0 * cos2_i - 1.0)) * dt;
-        
-        // 更新轨道要素并将角度归一化到 [0, 2*PI) 范围。
-        O[idx] = normalize_angle_cuda(O_val + dO);
-        w[idx] = normalize_angle_cuda(w_val + dw);
-        M[idx] = normalize_angle_cuda(M_val + dM);
+        double dO_step = -factor * cos_i * dt;
+        double dw_step = 0.5 * factor * (5.0 * cos2_i - 1.0) * dt;
+        double dM_step = (n + 0.5 * factor * sqrt(one_minus_e2) * (3.0 * cos2_i - 1.0)) * dt;
+
+        double iter_scale = static_cast<double>(iterations);
+
+        O[idx] = normalize_angle_cuda(O_val + dO_step * iter_scale);
+        w[idx] = normalize_angle_cuda(w_val + dw_step * iter_scale);
+        M[idx] = normalize_angle_cuda(M_val + dM_step * iter_scale);
     }
 }
 
@@ -265,7 +266,7 @@ extern "C" {
      * @param j2 地球J2摄动系数。
      */
     void cuda_propagate_j2(double* elements, size_t num_satellites, double dt, 
-                          double mu, double re, double j2) {
+                          double mu, double re, double j2, size_t num_steps) {
         
         // 将物理常数从主机内存复制到设备的__constant__内存。
         cudaMemcpyToSymbol(d_MU, &mu, sizeof(double));
@@ -298,11 +299,20 @@ extern "C" {
         cudaMemcpy(d_w, w, size, cudaMemcpyHostToDevice);
         cudaMemcpy(d_M, M, size, cudaMemcpyHostToDevice);
         
-        // 启动内核。每个线程处理一个卫星。
         int threadsPerBlock = 256;
         int blocksPerGrid = (static_cast<int>(num_satellites) + threadsPerBlock - 1) / threadsPerBlock;
-        j2_propagate_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_a, d_e, d_i, d_O, d_w, d_M, static_cast<int>(num_satellites), dt);
-        cudaDeviceSynchronize();
+        if (num_steps == 0) {
+            num_steps = 1;
+        }
+        const size_t max_iterations = static_cast<size_t>(std::numeric_limits<int>::max());
+        size_t remaining = num_steps;
+        while (remaining > 0) {
+            size_t batch = std::min(remaining, max_iterations);
+            j2_propagate_kernel<<<blocksPerGrid, threadsPerBlock>>>(
+                d_a, d_e, d_i, d_O, d_w, d_M, static_cast<int>(num_satellites), dt, static_cast<int>(batch));
+            cudaDeviceSynchronize();
+            remaining -= batch;
+        }
         
         // 将结果从设备内存复制回主机内存。
         cudaMemcpy(O, d_O, size, cudaMemcpyDeviceToHost);
@@ -406,6 +416,7 @@ extern "C" {
                                      double* d_O, double* d_w, double* d_M,
                                      size_t num_satellites, double dt,
                                      double mu, double re, double j2,
+                                     size_t num_steps,
                                      cudaStream_t stream) {
         // 更新常量内存
         cudaMemcpyToSymbol(d_MU, &mu, sizeof(double));
@@ -415,8 +426,17 @@ extern "C" {
         // 启动内核（异步）
         int threadsPerBlock = 256;
         int blocksPerGrid = (static_cast<int>(num_satellites) + threadsPerBlock - 1) / threadsPerBlock;
-        j2_propagate_kernel<<<blocksPerGrid, threadsPerBlock, 0, stream>>>(
-            d_a, d_e, d_i, d_O, d_w, d_M, static_cast<int>(num_satellites), dt);
+        if (num_steps == 0) {
+            return;
+        }
+        const size_t max_iterations = static_cast<size_t>(std::numeric_limits<int>::max());
+        size_t remaining = num_steps;
+        while (remaining > 0) {
+            size_t batch = std::min(remaining, max_iterations);
+            j2_propagate_kernel<<<blocksPerGrid, threadsPerBlock, 0, stream>>>(
+                d_a, d_e, d_i, d_O, d_w, d_M, static_cast<int>(num_satellites), dt, static_cast<int>(batch));
+            remaining -= batch;
+        }
     }
     
     /**
