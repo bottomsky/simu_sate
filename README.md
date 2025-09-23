@@ -75,6 +75,11 @@ j2-perturbation-orbit-propagator/
 - **Velocity / Impulse Δv**: meters per second (`m/s`)
 - **State vectors (`r`, `v`)**: geocentric inertial coordinates (ECI), in meters and meters per second
 
+### Key Components
+- `J2OrbitPropagator`: single-satellite J2 propagation (fixed/adaptive step RK4)
+- `J2ConstellationPropagator`: large-scale constellation propagation (scalar/SIMD/CUDA)
+- `J2ConstellationBuilder`: constellation pattern generators (e.g., Walker Delta shells)
+
 ### Computational Performance (estimated)
 - **CPU Scalar**: 1x baseline
 - **CPU SIMD (AVX2)**: 3-4x speedup
