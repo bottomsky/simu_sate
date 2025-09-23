@@ -68,6 +68,13 @@ j2-perturbation-orbit-propagator/
 - **Optimized**: 0.96 MB (shared epoch time)
 - **Savings**: 14.3% memory reduction
 
+### Units & Conventions
+- **Time**: seconds (`s`)
+- **Distance / Semi-major axis**: meters (`m`)
+- **Angles** (`i`, `Ω`, `ω`, `M`): radians (`rad`)
+- **Velocity / Impulse Δv**: meters per second (`m/s`)
+- **State vectors (`r`, `v`)**: geocentric inertial coordinates (ECI), in meters and meters per second
+
 ### Computational Performance (estimated)
 - **CPU Scalar**: 1x baseline
 - **CPU SIMD (AVX2)**: 3-4x speedup
