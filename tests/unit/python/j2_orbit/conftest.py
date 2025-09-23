@@ -31,18 +31,28 @@ def _resolve_library_path():
         return env_path
 
     here = Path(__file__).resolve()
-    repo_root = here.parents[4]  # tests/unit/python/j2_orbit -> 上溯 4 层到 simu_sate 目录
+    repo_root = here.parents[5]  # tests/unit/python/j2_orbit -> 上溯 5 层到仓库根目录
 
     candidates = [
-        str(repo_root / "example" / lib_name),
-        str(repo_root / "build" / "Release" / lib_name),
-        str(repo_root / "build" / "Debug" / lib_name),
-        str(repo_root / "build" / lib_name),
-        lib_name,  # 系统路径
+        repo_root / "build" / "Debug" / lib_name,
+        repo_root / "build" / "Release" / lib_name,
+        repo_root / "build" / lib_name,
+        repo_root / "example" / lib_name,
+        Path(lib_name),  # 系统路径
     ]
+
+    existing: list[Path] = []
     for p in candidates:
-        if os.path.exists(p):
-            return p
+        try:
+            if p.exists():
+                existing.append(p)
+        except OSError:
+            continue
+
+    if existing:
+        existing.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+        return str(existing[0])
+
     return lib_name
 
 
