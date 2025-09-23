@@ -154,8 +154,25 @@ def j2_lib():
     lib.constellation_propagator_destroy.argtypes = [c_void_p]
     lib.constellation_propagator_destroy.restype = None
 
-    lib.constellation_propagator_add_satellite.argtypes = [c_void_p, POINTER(CCompactOrbitalElements)]
+    lib.constellation_propagator_add_satellites.argtypes = [
+        c_void_p,
+        POINTER(CCompactOrbitalElements),
+        c_size_t,
+    ]
+    lib.constellation_propagator_add_satellites.restype = c_int
+
+    lib.constellation_propagator_add_satellite.argtypes = [
+        c_void_p,
+        POINTER(CCompactOrbitalElements),
+    ]
     lib.constellation_propagator_add_satellite.restype = c_int
+
+    lib.constellation_propagator_get_satellite_elements.argtypes = [
+        c_void_p,
+        c_size_t,
+        POINTER(CCompactOrbitalElements),
+    ]
+    lib.constellation_propagator_get_satellite_elements.restype = c_int
 
     lib.constellation_propagator_get_satellite_state.argtypes = [
         c_void_p,
@@ -174,6 +191,26 @@ def j2_lib():
 
     lib.constellation_propagator_propagate.argtypes = [c_void_p, c_double]
     lib.constellation_propagator_propagate.restype = c_int
+
+    lib.constellation_propagator_set_step_size.argtypes = [c_void_p, c_double]
+    lib.constellation_propagator_set_step_size.restype = c_int
+
+    lib.constellation_propagator_set_compute_mode.argtypes = [c_void_p, c_int]
+    lib.constellation_propagator_set_compute_mode.restype = c_int
+
+    lib.constellation_propagator_set_adaptive_step_size.argtypes = [c_void_p, c_int]
+    lib.constellation_propagator_set_adaptive_step_size.restype = c_int
+
+    lib.constellation_propagator_set_adaptive_parameters.argtypes = [
+        c_void_p,
+        c_double,
+        c_double,
+        c_double,
+    ]
+    lib.constellation_propagator_set_adaptive_parameters.restype = c_int
+
+    lib.constellation_propagator_is_cuda_available.argtypes = []
+    lib.constellation_propagator_is_cuda_available.restype = c_int
 
     return lib
 
