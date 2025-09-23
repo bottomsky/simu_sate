@@ -44,6 +44,9 @@ public:
     // Predict conjunctions within [0, horizon]
     std::vector<ConjunctionEvent> predict(const J2ConstellationPropagator& propagator) const;
 
+    // Notify that satellite sat_id has executed a maneuver; trigger adjacency refresh
+    void notifyManeuver(std::size_t sat_id, const CompactOrbitalElements& updated_elements) const;
+
 private:
     ConjunctionPredictorConfig cfg_;
     ConjunctionStrategy strategy_;

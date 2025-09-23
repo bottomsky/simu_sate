@@ -239,26 +239,99 @@ void SatelliteConjunctionPredictor::ensureConnectionTable(const J2ConstellationP
     }
 
     const double horizon = std::max(0.0, cfg_.horizon);
-    for (std::size_t i = 0; i + 1 < n; ++i) {
-        const auto& ei = elems[i];
-        const auto& ri = rates[i];
-        for (std::size_t j = i + 1; j < n; ++j) {
+
+    struct BucketKey {
+        int shell;
+        int raan;
+        int anomaly;
+        bool operator==(const BucketKey& other) const noexcept {
+            return shell == other.shell && raan == other.raan && anomaly == other.anomaly;
+        }
+    };
+    struct BucketHash {
+        std::size_t operator()(const BucketKey& k) const noexcept {
+            std::size_t h1 = std::hash<int>{}(k.shell);
+            std::size_t h2 = std::hash<int>{}(k.raan);
+            std::size_t h3 = std::hash<int>{}(k.anomaly);
+            return h1 ^ (h2 << 1) ^ (h3 << 2);
+        }
+    };
+
+    double avg_radius = 0.0;
+    double avg_sin = 0.0;
+    for (const auto& e : elems) {
+        double radius = e.a * (1.0 - 0.5 * e.e * e.e);
+        avg_radius += radius;
+        avg_sin += std::max(1e-3, std::sin(e.i));
+    }
+    avg_radius = std::max(1.0, avg_radius / static_cast<double>(n));
+    avg_sin = std::max(1e-3, avg_sin / static_cast<double>(n));
+
+    const double shell_width = std::max(1000.0, cfg_.threshold);
+    double omega_bin_size = std::max(1e-3, cfg_.threshold / (avg_radius * avg_sin));
+    double u_bin_size = std::max(1e-3, cfg_.threshold / avg_radius);
+
+    auto bucket_index = [](double angle, double bin_size) -> int {
+        double wrapped = wrapPi(angle);
+        return static_cast<int>(std::floor((wrapped + M_PI) / bin_size));
+    };
+
+    std::unordered_map<BucketKey, std::vector<std::size_t>, BucketHash> buckets;
+    buckets.reserve(n * 2);
+
+    std::vector<int> shell_ids(n);
+    std::vector<int> raan_ids(n);
+    std::vector<int> anomaly_ids(n);
+
+    for (std::size_t i = 0; i < n; ++i) {
+        const auto& e = elems[i];
+        int shell = static_cast<int>(std::floor(e.a / shell_width));
+        int raan = bucket_index(e.O, omega_bin_size);
+        int anomaly = bucket_index(e.w + e.M, u_bin_size);
+        shell_ids[i] = shell;
+        raan_ids[i] = raan;
+        anomaly_ids[i] = anomaly;
+        buckets[{shell, raan, anomaly}].push_back(i);
+    }
+
+    for (std::size_t idx = 0; idx < n; ++idx) {
+        const auto& ei = elems[idx];
+        const auto& ri = rates[idx];
+        int shell = shell_ids[idx];
+        int raan = raan_ids[idx];
+        int anomaly = anomaly_ids[idx];
+
+        std::unordered_set<std::size_t> candidates;
+        for (int ds = -1; ds <= 1; ++ds) {
+            int shell_nb = shell + ds;
+            for (int dr = -1; dr <= 1; ++dr) {
+                int raan_nb = raan + dr;
+                for (int da = -1; da <= 1; ++da) {
+                    BucketKey key{shell_nb, raan_nb, anomaly + da};
+                    auto it = buckets.find(key);
+                    if (it == buckets.end()) continue;
+                    for (auto id : it->second) {
+                        if (id != idx) candidates.insert(id);
+                    }
+                }
+            }
+        }
+
+        for (std::size_t j : candidates) {
+            if (j <= idx) continue;
             const auto& ej = elems[j];
             const auto& rj = rates[j];
 
             double a_ref = std::max(1.0, std::min(ei.a, ej.a));
-            double abs_da = std::abs(ei.a - ej.a);
-            if (abs_da > cfg_.threshold) continue;
+            if (std::abs(ei.a - ej.a) > cfg_.threshold) continue;
 
-            double abs_di = std::abs(ei.i - ej.i);
             double i_thresh = cfg_.threshold / a_ref;
-            if (abs_di > i_thresh) continue;
+            if (std::abs(ei.i - ej.i) > i_thresh) continue;
 
             double sin_i_eff = std::max(1e-3, std::sin(0.5 * (ei.i + ej.i)));
             double omega_thresh = cfg_.threshold / (a_ref * sin_i_eff);
             omega_thresh += std::abs(ri.raandot - rj.raandot) * horizon;
-            double delta_omega = std::abs(wrapPi(ei.O - ej.O));
-            if (delta_omega > omega_thresh) continue;
+            if (std::abs(wrapPi(ei.O - ej.O)) > omega_thresh) continue;
 
             double base_u_i = ei.w + ei.M;
             double base_u_j = ej.w + ej.M;
@@ -266,10 +339,9 @@ void SatelliteConjunctionPredictor::ensureConnectionTable(const J2ConstellationP
             double rate_u_i = ri.argpdot + ri.meandot;
             double rate_u_j = rj.argpdot + rj.meandot;
             u_thresh += std::abs(rate_u_i - rate_u_j) * horizon;
-            double delta_u = std::abs(wrapPi(base_u_i - base_u_j));
-            if (delta_u > u_thresh) continue;
+            if (std::abs(wrapPi(base_u_i - base_u_j)) > u_thresh) continue;
 
-            connection_table_[i].push_back(j);
+            connection_table_[idx].push_back(j);
         }
     }
 
@@ -327,6 +399,11 @@ std::vector<ConjunctionEvent> SatelliteConjunctionPredictor::predictConnectionTa
         }
     }
     return events;
+}
+
+void SatelliteConjunctionPredictor::notifyManeuver(std::size_t /*sat_id*/, const CompactOrbitalElements& /*updated_elements*/) const {
+    connection_table_valid_ = false;
+    cached_satellite_count_ = 0;
 }
 
 std::vector<ConjunctionEvent> SatelliteConjunctionPredictor::refineBracket(const StateVector& s0_i, const StateVector& s0_j,

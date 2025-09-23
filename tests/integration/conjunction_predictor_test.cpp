@@ -68,4 +68,9 @@ TEST(ConjunctionPredictorTest, DetectsCloseApproachAtEpoch) {
         }
     }
     EXPECT_TRUE(found_ct);
+
+    // Notify maneuver (no actual change) and ensure table rebuild succeeds
+    predictor_ct.notifyManeuver(0, sats[0]);
+    auto events_ct2 = predictor_ct.predict(prop_ct);
+    EXPECT_FALSE(events_ct2.empty());
 }
