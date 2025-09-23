@@ -4,6 +4,7 @@
 #include <Eigen/Dense>
 #include <vector>
 #include <memory>
+#include <utility>
 #include <immintrin.h>  // SIMD intrinsics
 #include <cmath>
 #include <iostream>
@@ -49,6 +50,17 @@ class J2ConstellationPropagator {
 public:
     // 构造函数
     J2ConstellationPropagator(double epoch_time = 0.0);
+
+    // 拷贝/移动语义（CUDA 环境下执行深拷贝）
+    J2ConstellationPropagator(const J2ConstellationPropagator& other);
+    J2ConstellationPropagator& operator=(const J2ConstellationPropagator& other);
+    J2ConstellationPropagator(J2ConstellationPropagator&& other) noexcept;
+    J2ConstellationPropagator& operator=(J2ConstellationPropagator&& other) noexcept;
+
+    void swap(J2ConstellationPropagator& other) noexcept;
+    friend void swap(J2ConstellationPropagator& lhs, J2ConstellationPropagator& rhs) noexcept {
+        lhs.swap(rhs);
+    }
     
     // 析构函数
     ~J2ConstellationPropagator();
@@ -163,6 +175,8 @@ private:
     void recalcSampleStride();
     void integrateSteps(size_t steps);
     void integrateRemainder(double dt);
+    void copyFrom(const J2ConstellationPropagator& other);
+    void moveFrom(J2ConstellationPropagator&& other) noexcept;
 
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     // CUDA相关成员（在启用CUDA工具链时可用）

@@ -62,9 +62,148 @@ J2ConstellationPropagator::J2ConstellationPropagator(double epoch_time)
     }
 }
 
+J2ConstellationPropagator::J2ConstellationPropagator(const J2ConstellationPropagator& other)
+    : J2ConstellationPropagator(other.epoch_time_) {
+    copyFrom(other);
+}
+
+J2ConstellationPropagator& J2ConstellationPropagator::operator=(const J2ConstellationPropagator& other) {
+    if (this == &other) {
+        return *this;
+    }
+    J2ConstellationPropagator tmp(other);
+    swap(tmp);
+    return *this;
+}
+
+J2ConstellationPropagator::J2ConstellationPropagator(J2ConstellationPropagator&& other) noexcept
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
+    : d_a_(nullptr), d_e_(nullptr), d_i_(nullptr), d_O_(nullptr), d_w_(nullptr), d_M_(nullptr),
+      d_x_(nullptr), d_y_(nullptr), d_z_(nullptr), gpu_buffer_size_(0), cuda_stream_(nullptr),
+      cublas_handle_(nullptr)
+#endif
+{
+    moveFrom(std::move(other));
+}
+
+J2ConstellationPropagator& J2ConstellationPropagator::operator=(J2ConstellationPropagator&& other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+    swap(other);
+    return *this;
+}
+
 J2ConstellationPropagator::~J2ConstellationPropagator() {
 #if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
     cleanupCUDA();
+#endif
+}
+
+void J2ConstellationPropagator::copyFrom(const J2ConstellationPropagator& other) {
+    if (this == &other) {
+        return;
+    }
+
+    elements_ = other.elements_;
+    epoch_time_ = other.epoch_time_;
+    current_time_ = other.current_time_;
+    step_size_ = other.step_size_;
+    compute_mode_ = other.compute_mode_;
+    sample_interval_ = other.sample_interval_;
+    steps_per_sample_ = other.steps_per_sample_;
+    device_elements_dirty_ = other.device_elements_dirty_;
+    host_elements_dirty_ = other.host_elements_dirty_;
+
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
+    d_a_ = d_e_ = d_i_ = d_O_ = d_w_ = d_M_ = nullptr;
+    d_x_ = d_y_ = d_z_ = nullptr;
+    gpu_buffer_size_ = 0;
+    cuda_stream_ = nullptr;
+    cublas_handle_ = nullptr;
+
+    if (other.gpu_buffer_size_ > 0 && isCudaAvailable()) {
+        const size_t bytes = other.gpu_buffer_size_ * sizeof(double);
+
+        auto alloc_and_copy = [&](double*& dst, const double* src) {
+            cudaMalloc(&dst, bytes);
+            if (src) {
+                cudaMemcpy(dst, src, bytes, cudaMemcpyDeviceToDevice);
+            }
+        };
+
+        alloc_and_copy(d_a_, other.d_a_);
+        alloc_and_copy(d_e_, other.d_e_);
+        alloc_and_copy(d_i_, other.d_i_);
+        alloc_and_copy(d_O_, other.d_O_);
+        alloc_and_copy(d_w_, other.d_w_);
+        alloc_and_copy(d_M_, other.d_M_);
+        alloc_and_copy(d_x_, other.d_x_);
+        alloc_and_copy(d_y_, other.d_y_);
+        alloc_and_copy(d_z_, other.d_z_);
+
+        gpu_buffer_size_ = other.gpu_buffer_size_;
+
+        if (other.cuda_stream_) {
+            cudaStreamCreate(&cuda_stream_);
+        }
+    }
+#endif
+}
+
+void J2ConstellationPropagator::moveFrom(J2ConstellationPropagator&& other) noexcept {
+    elements_ = std::move(other.elements_);
+    epoch_time_ = other.epoch_time_;
+    current_time_ = other.current_time_;
+    step_size_ = other.step_size_;
+    compute_mode_ = other.compute_mode_;
+    sample_interval_ = other.sample_interval_;
+    steps_per_sample_ = other.steps_per_sample_;
+    device_elements_dirty_ = other.device_elements_dirty_;
+    host_elements_dirty_ = other.host_elements_dirty_;
+
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
+    d_a_ = std::exchange(other.d_a_, nullptr);
+    d_e_ = std::exchange(other.d_e_, nullptr);
+    d_i_ = std::exchange(other.d_i_, nullptr);
+    d_O_ = std::exchange(other.d_O_, nullptr);
+    d_w_ = std::exchange(other.d_w_, nullptr);
+    d_M_ = std::exchange(other.d_M_, nullptr);
+    d_x_ = std::exchange(other.d_x_, nullptr);
+    d_y_ = std::exchange(other.d_y_, nullptr);
+    d_z_ = std::exchange(other.d_z_, nullptr);
+    gpu_buffer_size_ = std::exchange(other.gpu_buffer_size_, 0);
+    cuda_stream_ = std::exchange(other.cuda_stream_, nullptr);
+    cublas_handle_ = std::exchange(other.cublas_handle_, nullptr);
+#endif
+}
+
+void J2ConstellationPropagator::swap(J2ConstellationPropagator& other) noexcept {
+    using std::swap;
+
+    swap(elements_, other.elements_);
+    swap(epoch_time_, other.epoch_time_);
+    swap(current_time_, other.current_time_);
+    swap(step_size_, other.step_size_);
+    swap(compute_mode_, other.compute_mode_);
+    swap(sample_interval_, other.sample_interval_);
+    swap(steps_per_sample_, other.steps_per_sample_);
+    swap(device_elements_dirty_, other.device_elements_dirty_);
+    swap(host_elements_dirty_, other.host_elements_dirty_);
+
+#if defined(HAVE_CUDA_TOOLKIT) && HAVE_CUDA_TOOLKIT
+    swap(d_a_, other.d_a_);
+    swap(d_e_, other.d_e_);
+    swap(d_i_, other.d_i_);
+    swap(d_O_, other.d_O_);
+    swap(d_w_, other.d_w_);
+    swap(d_M_, other.d_M_);
+    swap(d_x_, other.d_x_);
+    swap(d_y_, other.d_y_);
+    swap(d_z_, other.d_z_);
+    swap(gpu_buffer_size_, other.gpu_buffer_size_);
+    swap(cuda_stream_, other.cuda_stream_);
+    swap(cublas_handle_, other.cublas_handle_);
 #endif
 }
 
