@@ -5,6 +5,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <iomanip>
+#include <cmath>
 #include <vector>
 #include <string>
 #ifdef _WIN32
@@ -203,6 +204,29 @@ void expectElementsClose(const CompactOrbitalElements& actual,
     EXPECT_NEAR(angularDifference(actual.M, reference.M), 0.0, mean_anomaly_tol);
 }
 
+std::vector<CompactOrbitalElements> collectElements(const J2ConstellationPropagator& propagator) {
+    std::vector<CompactOrbitalElements> out;
+    const size_t count = propagator.getSatelliteCount();
+    out.reserve(count);
+    for (size_t idx = 0; idx < count; ++idx) {
+        out.push_back(propagator.getSatelliteElements(idx));
+    }
+    return out;
+}
+
+bool elementsDifferBeyond(const CompactOrbitalElements& lhs,
+                          const CompactOrbitalElements& rhs,
+                          double linear_tol,
+                          double angular_tol) {
+    if (std::abs(lhs.a - rhs.a) > linear_tol) return true;
+    if (std::abs(lhs.e - rhs.e) > linear_tol) return true;
+    if (std::abs(lhs.i - rhs.i) > angular_tol) return true;
+    if (std::abs(angularDifference(lhs.O, rhs.O)) > angular_tol) return true;
+    if (std::abs(angularDifference(lhs.w, rhs.w)) > angular_tol) return true;
+    if (std::abs(angularDifference(lhs.M, rhs.M)) > angular_tol) return true;
+    return false;
+}
+
 }  // namespace
 
 TEST(ConstellationPropagationConsistency, ModesAgreeAcrossStepsAndDurations) {
@@ -255,4 +279,126 @@ TEST(ConstellationPropagationConsistency, ModesAgreeAcrossStepsAndDurations) {
         }
 
     }
+}
+
+TEST(ConstellationPropagatorCopySemantics, DeepCopyIndependence) {
+    const auto initial_elements = createTestConstellation();
+    const bool cuda_available = J2ConstellationPropagator::isCudaAvailable();
+    const auto preferred_mode = cuda_available ? J2ConstellationPropagator::GPU_CUDA
+                                               : J2ConstellationPropagator::CPU_SIMD;
+
+    J2ConstellationPropagator original(0.0);
+    original.setComputeMode(preferred_mode);
+    original.setStepSize(10.0);
+    original.addSatellites(initial_elements);
+    original.propagateConstellation(120.0);
+
+    const double linear_tol = 1e-6;
+    const double angular_tol = 1e-8;
+    const double mean_anomaly_tol = 1e-8;
+
+    const auto baseline = collectElements(original);
+    ASSERT_EQ(baseline.size(), initial_elements.size());
+
+    J2ConstellationPropagator copied(original);
+    const auto copied_elements = collectElements(copied);
+    ASSERT_EQ(copied_elements.size(), baseline.size());
+    for (size_t idx = 0; idx < baseline.size(); ++idx) {
+        expectElementsClose(copied_elements[idx], baseline[idx],
+                            linear_tol, angular_tol, mean_anomaly_tol);
+    }
+
+    original.propagateConstellation(600.0);
+    const auto mutated = collectElements(original);
+    bool diverged_from_baseline = false;
+    for (size_t idx = 0; idx < baseline.size(); ++idx) {
+        if (elementsDifferBeyond(mutated[idx], baseline[idx], 1e-3, 1e-5)) {
+            diverged_from_baseline = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(diverged_from_baseline);
+
+    const auto copy_after_mutation = collectElements(copied);
+    for (size_t idx = 0; idx < baseline.size(); ++idx) {
+        expectElementsClose(copy_after_mutation[idx], baseline[idx],
+                            linear_tol, angular_tol, mean_anomaly_tol);
+        EXPECT_TRUE(elementsDifferBeyond(mutated[idx], copy_after_mutation[idx], 1e-3, 1e-5));
+    }
+
+    J2ConstellationPropagator assigned(0.0);
+    assigned.setComputeMode(preferred_mode);
+    assigned = original;
+    const auto assigned_elements = collectElements(assigned);
+    ASSERT_EQ(assigned_elements.size(), mutated.size());
+    for (size_t idx = 0; idx < mutated.size(); ++idx) {
+        expectElementsClose(assigned_elements[idx], mutated[idx],
+                            linear_tol, angular_tol, mean_anomaly_tol);
+    }
+
+    assigned.propagateConstellation(1200.0);
+    const auto assigned_after = collectElements(assigned);
+    const auto original_after_assignment = collectElements(original);
+    for (size_t idx = 0; idx < mutated.size(); ++idx) {
+        expectElementsClose(original_after_assignment[idx], mutated[idx],
+                            linear_tol, angular_tol, mean_anomaly_tol);
+    }
+
+    bool assigned_changed = false;
+    for (size_t idx = 0; idx < assigned_after.size(); ++idx) {
+        if (elementsDifferBeyond(assigned_after[idx], original_after_assignment[idx], 1e-3, 1e-5)) {
+            assigned_changed = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(assigned_changed);
+}
+
+TEST(ConstellationPropagatorCopySemantics, MoveTransferOwnership) {
+    const auto initial_elements = createTestConstellation();
+    const bool cuda_available = J2ConstellationPropagator::isCudaAvailable();
+    const auto preferred_mode = cuda_available ? J2ConstellationPropagator::GPU_CUDA
+                                               : J2ConstellationPropagator::CPU_SIMD;
+
+    J2ConstellationPropagator original(0.0);
+    original.setComputeMode(preferred_mode);
+    original.setStepSize(20.0);
+    original.addSatellites(initial_elements);
+    original.propagateConstellation(300.0);
+
+    const double linear_tol = 1e-6;
+    const double angular_tol = 1e-8;
+    const double mean_anomaly_tol = 1e-8;
+
+    const auto baseline = collectElements(original);
+    ASSERT_EQ(baseline.size(), initial_elements.size());
+
+    J2ConstellationPropagator moved(std::move(original));
+    const auto moved_elements = collectElements(moved);
+    ASSERT_EQ(moved_elements.size(), baseline.size());
+    for (size_t idx = 0; idx < baseline.size(); ++idx) {
+        expectElementsClose(moved_elements[idx], baseline[idx],
+                            linear_tol, angular_tol, mean_anomaly_tol);
+    }
+
+    J2ConstellationPropagator target(0.0);
+    target.setComputeMode(preferred_mode);
+    target = std::move(moved);
+    const auto target_elements = collectElements(target);
+    ASSERT_EQ(target_elements.size(), baseline.size());
+    for (size_t idx = 0; idx < baseline.size(); ++idx) {
+        expectElementsClose(target_elements[idx], baseline[idx],
+                            linear_tol, angular_tol, mean_anomaly_tol);
+    }
+
+    target.propagateConstellation(900.0);
+    const auto target_after = collectElements(target);
+    bool target_changed = false;
+    for (size_t idx = 0; idx < target_after.size(); ++idx) {
+        if (elementsDifferBeyond(target_after[idx], target_elements[idx], 1e-3, 1e-5)) {
+            target_changed = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(target_changed);
 }
