@@ -88,6 +88,9 @@ set(SOURCES
     src/j2_constellation_propagator_c.cpp
     src/constellation_builder.cpp
     src/SatelliteConjunctionPredictor.cpp
+    # C API wrappers
+    src/constellation_builder_c.cpp
+    src/SatelliteConjunctionPredictor_c.cpp
 )
 
 if(CMAKE_CUDA_COMPILER)
@@ -106,6 +109,9 @@ set(HEADERS
     include/SatelliteConjunctionPredictor.h
     include/common_types.h
     include/math_defs.h
+    // 新增 C 封装头
+    include/constellation_builder_c.h
+    include/SatelliteConjunctionPredictor_c.h
 )
 
 # 创建静态库
