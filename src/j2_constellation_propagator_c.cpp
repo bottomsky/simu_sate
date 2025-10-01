@@ -80,6 +80,19 @@ J2_API int j2_constellation_propagator_propagate(J2ConstellationPropagatorHandle
     catch (const std::exception&) { return -1; }
 }
 
+J2_API int j2_constellation_propagator_propagate_with_step(J2ConstellationPropagatorHandle handle,
+                                                          double target_time,
+                                                          double integration_step) {
+    J2ConstellationPropagator* p = validate_handle(handle);
+    if (!p || integration_step <= 0.0) return -1;
+    try {
+        p->propagateConstellationWithStep(target_time, integration_step);
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
 J2_API int j2_constellation_propagator_get_satellite_elements(J2ConstellationPropagatorHandle handle,
                                                           size_t satellite_id,
                                                           CCompactOrbitalElements* elements) {

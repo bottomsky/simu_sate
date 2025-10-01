@@ -105,6 +105,17 @@ J2_API int j2_constellation_propagator_propagate(J2ConstellationPropagatorHandle
                                              double target_time);
 
 /**
+ * @brief 使用指定积分步长传播到目标时间
+ * @param handle 传播器句柄
+ * @param target_time 目标时间 (s)
+ * @param integration_step 积分步长 (s)
+ * @return 0表示成功，非0表示失败
+ */
+J2_API int j2_constellation_propagator_propagate_with_step(J2ConstellationPropagatorHandle handle,
+                                                          double target_time,
+                                                          double integration_step);
+
+/**
  * @brief 获取指定卫星的当前轨道要素
  * @param handle 传播器句柄
  * @param satellite_id 卫星索引

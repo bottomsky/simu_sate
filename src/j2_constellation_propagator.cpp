@@ -4,6 +4,7 @@
 #include <array>
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 #if defined(__AVX2__) || defined(__AVX__)
 #include <immintrin.h>
 #endif
@@ -328,6 +329,38 @@ void J2ConstellationPropagator::integrateSteps(size_t steps) {
     }
 }
 
+void J2ConstellationPropagator::integrateStepsCustom(size_t steps, double dt) {
+    if (steps == 0 || dt <= EPSILON) {
+        return;
+    }
+
+    switch (compute_mode_) {
+        case CPU_SCALAR: {
+            for (size_t iter = 0; iter < steps; ++iter) {
+                propagateScalar(dt);
+            }
+            break;
+        }
+        case CPU_SIMD: {
+            for (size_t iter = 0; iter < steps; ++iter) {
+                propagateSIMD(dt);
+            }
+            break;
+        }
+        case GPU_CUDA: {
+            if (isCudaAvailable()) {
+                propagateCUDA(dt, steps);
+            } else {
+                std::cerr << "CUDA not available, falling back to SIMD" << std::endl;
+                for (size_t iter = 0; iter < steps; ++iter) {
+                    propagateSIMD(dt);
+                }
+            }
+            break;
+        }
+    }
+}
+
 void J2ConstellationPropagator::integrateRemainder(double dt) {
     if (dt <= EPSILON) {
         return;
@@ -349,6 +382,36 @@ void J2ConstellationPropagator::integrateRemainder(double dt) {
             }
             break;
     }
+}
+
+void J2ConstellationPropagator::propagateConstellationWithStep(double target_time, double integration_step) {
+    if (integration_step <= EPSILON) {
+        throw std::invalid_argument("integration_step must be positive");
+    }
+
+    double dt_total = target_time - current_time_;
+    if (dt_total < EPSILON) {
+        return;
+    }
+
+    size_t steps = 0;
+    double remainder = dt_total;
+    double raw_steps = std::floor(dt_total / integration_step);
+    if (raw_steps > 0.0) {
+        steps = static_cast<size_t>(raw_steps);
+        remainder = dt_total - integration_step * raw_steps;
+    }
+    if (remainder < EPSILON) {
+        remainder = 0.0;
+    } else if (remainder > integration_step - EPSILON) {
+        ++steps;
+        remainder = 0.0;
+    }
+
+    integrateStepsCustom(steps, integration_step);
+    integrateRemainder(remainder);
+
+    current_time_ = target_time;
 }
 
 void J2ConstellationPropagator::propagateConstellation(double target_time) {

@@ -79,6 +79,7 @@ j2-perturbation-orbit-propagator/
 ### Key Components
 - `J2OrbitPropagator`: single-satellite J2 propagation (fixed/adaptive step RK4)
 - `J2ConstellationPropagator`: large-scale constellation propagation (scalar/SIMD/CUDA)
+- `J2ConstellationPropagator::propagateConstellationWithStep(t, dt)`: coarse propagation using a caller-supplied step (useful for early-warning sweeps; follow up with a finer pass if higher fidelity is required)
 - `ConstellationBuilder`: constellation pattern generators (e.g., Walker Delta shells)
 - `SatelliteConjunctionPredictor`: conjunction search with hierarchical, spatial-grid, and connection-table strategies
 

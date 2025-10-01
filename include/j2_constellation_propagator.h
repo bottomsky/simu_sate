@@ -64,6 +64,7 @@ public:
     
     // 批量外推到指定时间
     void propagateConstellation(double target_time);
+    void propagateConstellationWithStep(double target_time, double integration_step);
 
     // 根据采样间隔向前推进若干采样点（每个采样点包含多个仿真步）
     void propagateSamples(size_t sample_count = 1);
@@ -135,6 +136,7 @@ private:
 
     // 标量积分实现（复用逻辑给纯标量与SIMD尾部）
     void propagateScalarRange(size_t begin, size_t end, double dt);
+    void integrateStepsCustom(size_t steps, double dt);
 
     // 单个卫星状态计算
     StateVector elementsToState(const CompactOrbitalElements& elements) const;
