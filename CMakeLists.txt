@@ -109,7 +109,7 @@ set(HEADERS
     include/SatelliteConjunctionPredictor.h
     include/common_types.h
     include/math_defs.h
-    // 新增 C 封装头
+    # 新增 C 封装头
     include/constellation_builder_c.h
     include/SatelliteConjunctionPredictor_c.h
 )

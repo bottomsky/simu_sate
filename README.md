@@ -74,6 +74,7 @@ j2-perturbation-orbit-propagator/
 - **Angles** (`i`, `Ω`, `ω`, `M`): radians (`rad`)
 - **Velocity / Impulse Δv**: meters per second (`m/s`)
 - **State vectors (`r`, `v`)**: geocentric inertial coordinates (ECI), in meters and meters per second
+- **C API Walker-Delta config**: `CWalkerDeltaConfig` fields follow the same SI units (angles `rad`, distance `m`, time `s`)
 
 ### Key Components
 - `J2OrbitPropagator`: single-satellite J2 propagation (fixed/adaptive step RK4)
